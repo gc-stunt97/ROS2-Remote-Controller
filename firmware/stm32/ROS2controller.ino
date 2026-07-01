@@ -138,7 +138,7 @@ void loop()
     //Serial.println(butR);
 
 */
-    StaticJsonDocument<200> jsonDocument;
+    StaticJsonDocument<256> jsonDocument;  // margine per 6 assi + 2 tastini
 
     char json_buffer[10]; // Dimensione del buffer in base ai valori massimi che vuoi formattare
     jsonDocument["LY"] = dtostrf(LY, 4, 2, json_buffer);
