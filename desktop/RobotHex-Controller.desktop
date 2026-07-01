@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=RobotHex Controller
+Comment=Avvia joystick + GUI del controller
+Exec=/home/giulio/robothex-controller.sh
+Icon=input-gaming
+Terminal=false
+Categories=Utility;
