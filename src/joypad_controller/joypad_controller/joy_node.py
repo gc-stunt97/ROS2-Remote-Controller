@@ -39,9 +39,14 @@ class JoystickNode(Node):
         self.declare_parameter("serial_port", "/dev/ttyACM0")
         self.declare_parameter("baud", 57600)
         self.declare_parameter("reconnect_period", 2.0)  # s di attesa tra i tentativi
+        # Il firmware ATTUALE sul micro scala lo yaw x2 -> Z arriva a ~±2. Con 0.5 lo
+        # riportiamo a ±1 come gli altri assi, SENZA riflashare. (Il firmware aggiornato
+        # nel repo ha gia' yaw x1: quando lo flasherai via ST-Link, metti yaw_scale:=1.0.)
+        self.declare_parameter("yaw_scale", 0.5)
         self._port = self.get_parameter("serial_port").value
         self._baud = int(self.get_parameter("baud").value)
         self._reconnect = float(self.get_parameter("reconnect_period").value)
+        self._yaw_scale = float(self.get_parameter("yaw_scale").value)
 
         self._pub_left = self.create_publisher(Point, "left_joystick_data", 10)
         self._pub_right = self.create_publisher(Point, "right_joystick_data", 10)
@@ -103,8 +108,10 @@ class JoystickNode(Node):
             data = json.loads(line)
             # Convenzione ROS: x = laterale (destra +), y = avanti (+), z = yaw.
             # Il firmware ha gli assi scambiati (avanti->X, destra->Y): rimappiamo.
-            left = Point(x=float(data["LY"]), y=float(data["LX"]), z=float(data["LZ"]))
-            right = Point(x=float(data["RY"]), y=float(data["RX"]), z=float(data["RZ"]))
+            left = Point(x=float(data["LY"]), y=float(data["LX"]),
+                         z=float(data["LZ"]) * self._yaw_scale)
+            right = Point(x=float(data["RY"]), y=float(data["RX"]),
+                          z=float(data["RZ"]) * self._yaw_scale)
             # Pulsanti: opzionali (assenti se il firmware non e' ancora aggiornato).
             btn_left = bool(int(data.get("BL", 0)))
             btn_right = bool(int(data.get("BR", 0)))
