@@ -112,11 +112,11 @@ void loop()
     butL = invButtons(butL);
     butR = invButtons(butR);
 
-    RZ = RZ * 2;  // // extra scaling for yaw to mke driving nice
+    RZ = RZ * 1;  // yaw normalizzato a ~[-1,1] come gli altri assi (gain 'feel' -> nel teleop)
     RX = RX * 1;  // invert value/direction as required based on wiring
     RY = RY * -1; // invert value/direction as required based on wiring
 
-    LZ = LZ * 2;  // extra scaling for yaw to mke driving nice
+    LZ = LZ * 1;  // yaw normalizzato a ~[-1,1] come gli altri assi (gain 'feel' -> nel teleop)
     LX = LX * 1;  // invert value/direction as required based on wiring
     LY = LY * -1; // invert value/direction as required based on wiring
 /*

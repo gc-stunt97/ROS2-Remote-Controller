@@ -23,7 +23,8 @@ via **seriale USB** al Raspberry del controller, dove il nodo ROS2 `joypad_contr
 ## Elaborazione (nel firmware)
 - ADC 12 bit → centro a 2048 (rimozione offset).
 - `deadzone()`: zona morta ±50 conteggi, poi scala a circa **-1.0 … +1.0**.
-- Yaw (LZ/RZ) moltiplicato ×2 per rendere lo sterzo più reattivo.
+- Tutti gli assi (incluso lo yaw LZ/RZ) normalizzati a circa **[-1, 1]**. L'eventuale
+  guadagno di sensibilità dello yaw va applicato a valle (nodo teleop), non nel firmware.
 - Alcuni assi invertiti via ×-1 secondo il cablaggio.
 
 ## Protocollo seriale (il "contratto" col nodo ROS2)
