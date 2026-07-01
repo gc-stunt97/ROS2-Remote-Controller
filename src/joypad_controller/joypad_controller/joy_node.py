@@ -90,8 +90,11 @@ class JoystickNode(Node):
             return
         try:
             data = json.loads(line)
-            left = Point(x=float(data["LX"]), y=float(data["LY"]), z=float(data["LZ"]))
-            right = Point(x=float(data["RX"]), y=float(data["RY"]), z=float(data["RZ"]))
+            # Convenzione ROS scelta: x = laterale (destra +), y = avanti (+), z = yaw.
+            # Il firmware ha gli assi scambiati rispetto a questa (avanti->X, destra->Y),
+            # quindi qui rimappiamo: Point.x <- (L/R)Y, Point.y <- (L/R)X. I segni tornano.
+            left = Point(x=float(data["LY"]), y=float(data["LX"]), z=float(data["LZ"]))
+            right = Point(x=float(data["RY"]), y=float(data["RX"]), z=float(data["RZ"]))
         except (json.JSONDecodeError, KeyError, ValueError, TypeError):
             return  # riga sporca: la saltiamo
         self._pub_left.publish(left)
