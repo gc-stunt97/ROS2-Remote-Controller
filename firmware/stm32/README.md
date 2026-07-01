@@ -29,15 +29,17 @@ via **seriale USB** al Raspberry del controller, dove il nodo ROS2 `joypad_contr
 ## Protocollo seriale (il "contratto" col nodo ROS2)
 - **Porta / baud:** USB CDC, **57600 baud** (lato Pi: `/dev/ttyACM0`).
 - **Frequenza:** un messaggio ogni **20 ms** (~50 Hz).
-- **Formato:** una **riga JSON** terminata da newline, con 6 chiavi float:
+- **Formato:** una **riga JSON** terminata da newline, con 6 assi float + 2 tastini int:
   ```json
-  {"LX":0.00,"LY":0.00,"LZ":0.00,"RX":0.00,"RY":0.00,"RZ":0.00}
+  {"LX":0.00,"LY":0.00,"LZ":0.00,"RX":0.00,"RY":0.00,"RZ":0.00,"BL":0,"BR":0}
   ```
-- Lato Pi, `joy_node.py` fa `json.loads` e riempie due `geometry_msgs/Point`
-  (L → x=LX, y=LY, z=LZ · R → x=RX, y=RY, z=RZ).
+  - `BL`/`BR` = tastino in cima al joystick sinistro/destro: **1 = premuto**, 0 = a riposo.
+- Lato Pi, `joy_node.py` fa `json.loads` e pubblica:
+  - assi → due `geometry_msgs/Point`, **rimappati** alla convenzione ROS
+    x=laterale(destra +), y=avanti(+): `Point.x <- (L/R)Y`, `Point.y <- (L/R)X`, `z <- (L/R)Z`;
+  - tastini → due `std_msgs/Bool` (`left_button` / `right_button`).
 
-## Note / migliorie possibili (non urgenti)
-- I pulsanti `butL`/`butR` sono letti ma **non inviati** nel JSON: se serviranno
-  (es. cambio gait, stop) vanno aggiunti al documento JSON e gestiti lato Pi.
-- Il buffer `json_buffer[10]` è riusato per tutti i valori: funziona perché ArduinoJson
-  **copia** le stringhe da `char*`, ma è un dettaglio fragile da tenere a mente.
+## Note
+- Il buffer `json_buffer[10]` è riusato per tutti i valori float: funziona perché
+  ArduinoJson **copia** le stringhe da `char*`, ma è un dettaglio fragile da ricordare.
+- I pin PB2/PB3 sono predisposti come input ma non letti: eventuali pulsanti extra futuri.

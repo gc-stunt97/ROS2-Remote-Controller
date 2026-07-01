@@ -148,6 +148,10 @@ void loop()
     jsonDocument["RZ"] = dtostrf(RZ, 4, 2, json_buffer);
     jsonDocument["RX"] = dtostrf(RX, 4, 2, json_buffer);
 
+    // Tastini in cima ai joystick (interi 0/1). Dopo invButtons(): 1 = premuto.
+    jsonDocument["BL"] = butL;
+    jsonDocument["BR"] = butR;
+
 
     String jsonString;
     serializeJson(jsonDocument, jsonString);

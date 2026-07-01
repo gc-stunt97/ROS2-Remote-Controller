@@ -2,14 +2,20 @@
 """Nodo publisher dei joystick.
 
 Legge la seriale dello STM32 (Blue Pill), interpreta la riga JSON
-{"LX","LY","LZ","RX","RY","RZ"} e pubblica due geometry_msgs/Point sui topic
-`left_joystick_data` e `right_joystick_data`.
+{"LX","LY","LZ","RX","RY","RZ","BL","BR"} e pubblica:
+- `left_joystick_data` / `right_joystick_data`  (geometry_msgs/Point, assi)
+- `left_button` / `right_button`                (std_msgs/Bool, tastino in cima)
+
+Convenzione assi ROS: x = laterale (destra +), y = avanti (+), z = yaw.
+I pulsanti sono opzionali: se il firmware non e' ancora aggiornato (chiavi BL/BR
+assenti) vengono pubblicati come False, senza errori.
 
 Robustezza:
 - porta e baud sono parametri ROS2 (niente valori "murati" nel codice);
 - la lettura seriale gira in un thread dedicato (non blocca l'esecutore ROS);
 - se l'USB e' scollegato o da' errore, riprova ad aprirlo da solo (riconnessione);
-- righe non decodificabili / JSON malformato / chiavi mancanti vengono scartate.
+- righe non decodificabili / JSON malformato / chiavi mancanti vengono scartate;
+- chiusura pulita (thread fermato, seriale chiusa, no doppio rclpy.shutdown).
 """
 
 import json
@@ -20,10 +26,11 @@ import serial
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point
+from std_msgs.msg import Bool
 
 
 class JoystickNode(Node):
-    """Legge lo STM32 via seriale e ripubblica i due joystick su ROS2."""
+    """Legge lo STM32 via seriale e ripubblica joystick + tastini su ROS2."""
 
     def __init__(self):
         super().__init__("joystick_node")
@@ -38,6 +45,8 @@ class JoystickNode(Node):
 
         self._pub_left = self.create_publisher(Point, "left_joystick_data", 10)
         self._pub_right = self.create_publisher(Point, "right_joystick_data", 10)
+        self._pub_btn_left = self.create_publisher(Bool, "left_button", 10)
+        self._pub_btn_right = self.create_publisher(Bool, "right_button", 10)
 
         self._serial = None
         self._stop = threading.Event()
@@ -74,7 +83,9 @@ class JoystickNode(Node):
                     continue
             try:
                 raw = self._serial.readline()
-            except serial.SerialException as exc:
+            except (serial.SerialException, OSError, TypeError) as exc:
+                if self._stop.is_set():
+                    break  # chiusura in corso: usciamo in silenzio
                 self.get_logger().warn(f"Errore seriale ({exc}); riconnetto")
                 self._close_serial()
                 continue
@@ -90,20 +101,26 @@ class JoystickNode(Node):
             return
         try:
             data = json.loads(line)
-            # Convenzione ROS scelta: x = laterale (destra +), y = avanti (+), z = yaw.
-            # Il firmware ha gli assi scambiati rispetto a questa (avanti->X, destra->Y),
-            # quindi qui rimappiamo: Point.x <- (L/R)Y, Point.y <- (L/R)X. I segni tornano.
+            # Convenzione ROS: x = laterale (destra +), y = avanti (+), z = yaw.
+            # Il firmware ha gli assi scambiati (avanti->X, destra->Y): rimappiamo.
             left = Point(x=float(data["LY"]), y=float(data["LX"]), z=float(data["LZ"]))
             right = Point(x=float(data["RY"]), y=float(data["RX"]), z=float(data["RZ"]))
+            # Pulsanti: opzionali (assenti se il firmware non e' ancora aggiornato).
+            btn_left = bool(int(data.get("BL", 0)))
+            btn_right = bool(int(data.get("BR", 0)))
         except (json.JSONDecodeError, KeyError, ValueError, TypeError):
             return  # riga sporca: la saltiamo
         self._pub_left.publish(left)
         self._pub_right.publish(right)
+        self._pub_btn_left.publish(Bool(data=btn_left))
+        self._pub_btn_right.publish(Bool(data=btn_right))
 
     # --- ciclo di vita ----------------------------------------------------
     def destroy_node(self):
         self._stop.set()
         self._close_serial()
+        if self._reader.is_alive():
+            self._reader.join(timeout=1.0)
         super().destroy_node()
 
 
@@ -116,7 +133,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():         # l'handler SIGINT di rclpy potrebbe aver gia' chiuso
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
