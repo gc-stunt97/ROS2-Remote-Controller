@@ -1,4 +1,3 @@
-
 #include "ArduinoJson.h"
 
 unsigned long currentMillis;
@@ -24,6 +23,10 @@ void setup()
 {
 
   Serial.begin(57600);
+
+  // ADC a 12 bit: il core ufficiale STM32 di default legge a 10 bit, ma il
+  // firmware assume 12 bit (offset -2048). Lo rendiamo esplicito.
+  analogReadResolution(12);
 
   pinMode(PC13, OUTPUT);
   
