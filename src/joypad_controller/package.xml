@@ -3,15 +3,14 @@
 <package format="3">
   <name>joypad_controller</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="giulio@todo.todo">giulio</maintainer>
+  <description>Controller remoto joystick per l'esapode RobotHex: legge lo STM32 via seriale e pubblica i dati dei due joystick su ROS2.</description>
+  <maintainer email="giulio97.cassano@gmail.com">giulio</maintainer>
   <license>TODO: License declaration</license>
 
-  <depend>json</depend>
-  <depend>tkinter</depend>
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
-  <depend>pyserial</depend>
+  <exec_depend>python3-serial</exec_depend>
+  <exec_depend>python3-tk</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

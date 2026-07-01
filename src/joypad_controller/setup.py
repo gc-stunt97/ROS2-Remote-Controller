@@ -14,15 +14,14 @@ setup(
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='giulio',
-    maintainer_email='giulio@todo.todo',
-    description='TODO: Package description',
+    maintainer_email='giulio97.cassano@gmail.com',
+    description='Controller remoto joystick per l\'esapode RobotHex: legge lo '
+                'STM32 via seriale e pubblica i dati dei due joystick su ROS2.',
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             "joypad_node = joypad_controller.joy_node:main",
-            "L_joypad_reader = joypad_controller.L_joy_reader:main",
-            "R_joypad_reader = joypad_controller.R_joy_reader:main",
             "joypad_gui_app = joypad_controller.joypad_gui:main"
         ],
     },

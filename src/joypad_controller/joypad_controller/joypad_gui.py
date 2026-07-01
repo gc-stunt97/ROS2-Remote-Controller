@@ -1,107 +1,136 @@
 #!/usr/bin/env python3
+"""GUI dei joystick — "plancia 2D".
+
+Ogni joystick e' mostrato come un pad quadrato con un pallino che segue X
+(orizzontale) e Y (verticale), con crosshair e cerchio di fondo scala; accanto
+una barra verticale per lo Z (yaw), e sotto i valori numerici.
+
+Sottoscrive `left_joystick_data` / `right_joystick_data` (geometry_msgs/Point).
+Si puo' provare SENZA robot: basta controller + STM32 collegato (+ joy_node in
+esecuzione che pubblica i topic).
+
+Integrazione ROS+Tk: il ciclo lo guida Tkinter (`mainloop`); a ogni tick facciamo
+`spin_once` per far girare le callback ROS e poi ridisegniamo.
+"""
 
 import tkinter as tk
-from rclpy.qos import QoSProfile
-from geometry_msgs.msg import Point
+
 import rclpy
+from geometry_msgs.msg import Point
 
-class JoystickSubscriberApp:
-    def __init__(self):
-        self.node = rclpy.create_node('joystick_gui_subscriber')
+# --- estetica ---
+PAD = 220        # lato del pad quadrato (px)
+DOT_R = 9        # raggio del pallino
+BAR_W = 30       # larghezza della barra Z
+REFRESH_MS = 30  # ~33 Hz di ridisegno
 
-        self.right_values = Point()
-        self.left_values = Point()
+BG = "#1e1e2e"
+FG = "#cdd6f4"
+GRID = "#45475a"
+DOT_LEFT = "#89b4fa"   # blu (joystick sinistro)
+DOT_RIGHT = "#f38ba8"  # rosa (joystick destro)
+BAR_COL = "#a6e3a1"    # verde (barra Z)
 
-        self.right_subscriber = self.node.create_subscription(
-            Point, '/right_joystick_data', self.right_callback, QoSProfile(depth=10))
-        self.left_subscriber = self.node.create_subscription(
-            Point, '/left_joystick_data', self.left_callback, QoSProfile(depth=10))
+
+class JoypadGui:
+    """Finestra Tkinter che visualizza i due joystick in tempo reale."""
+
+    def __init__(self, node):
+        self.node = node
+        self.values = {"left": Point(), "right": Point()}
+
+        node.create_subscription(
+            Point, "left_joystick_data", lambda m: self._store("left", m), 10)
+        node.create_subscription(
+            Point, "right_joystick_data", lambda m: self._store("right", m), 10)
 
         self.root = tk.Tk()
-        self.root.title('Joystick Values')
-        self.root.geometry("800x550")
+        self.root.title("Joystick — RobotHex controller")
+        self.root.configure(bg=BG)
 
-        self.left_frame = tk.Frame(self.root)
-        self.left_frame.pack(side='left', padx=100)
+        self.widgets = {}
+        self._build_side("LEFT", "left", DOT_LEFT, tk.LEFT)
+        self._build_side("RIGHT", "right", DOT_RIGHT, tk.RIGHT)
 
-        self.left_label = tk.Label(self.left_frame, text='Left Joystick:')
-        self.left_label.pack(pady=(100, 0))
+    # --- costruzione UI ---------------------------------------------------
+    def _build_side(self, title, key, dot_color, side):
+        frame = tk.Frame(self.root, bg=BG)
+        frame.pack(side=side, padx=24, pady=16)
 
-        self.left_frame.columnconfigure(0, weight=1)
+        tk.Label(frame, text=title, bg=BG, fg=FG,
+                 font=("TkDefaultFont", 14, "bold")).pack(pady=(0, 8))
 
-        left_label_x = tk.Label(self.left_frame, text='LX:')
-        left_label_x.pack()
+        row = tk.Frame(frame, bg=BG)
+        row.pack()
+        pad = tk.Canvas(row, width=PAD, height=PAD, bg=BG,
+                        highlightthickness=1, highlightbackground=GRID)
+        pad.pack(side=tk.LEFT)
+        bar = tk.Canvas(row, width=BAR_W, height=PAD, bg=BG,
+                        highlightthickness=1, highlightbackground=GRID)
+        bar.pack(side=tk.LEFT, padx=(10, 0))
 
-        self.left_cursor_x = tk.Scale(self.left_frame, from_=1.0, to=-1.0, resolution=0.01, orient='vertical', length=150)
-        self.left_cursor_x.pack()
+        val = tk.Label(frame, text="X:+0.00  Y:+0.00  Z:+0.00", bg=BG, fg=FG,
+                       font=("TkFixedFont", 11))
+        val.pack(pady=(8, 0))
 
-        left_label_x = tk.Label(self.left_frame, text='LY:')
-        left_label_x.pack()
+        self.widgets[key] = {"pad": pad, "bar": bar, "val": val, "color": dot_color}
 
-        self.left_cursor_y = tk.Scale(self.left_frame, from_=-1.0, to=1.0, resolution=0.01, orient='horizontal', length=150)
-        self.left_cursor_y.pack()
+    # --- callback ROS -----------------------------------------------------
+    def _store(self, key, msg):
+        self.values[key] = msg
 
-        left_label_x = tk.Label(self.left_frame, text='LZ:')
-        left_label_x.pack()
+    @staticmethod
+    def _clamp(v):
+        return max(-1.0, min(1.0, float(v)))
 
-        self.left_cursor_z = tk.Scale(self.left_frame, from_=-2.0, to=2.0, resolution=0.01, orient='horizontal', length=150)
-        self.left_cursor_z.pack()
+    # --- disegno ----------------------------------------------------------
+    def _draw_pad(self, canvas, x, y, color):
+        canvas.delete("all")
+        c = PAD / 2
+        half = PAD / 2 - DOT_R - 2
+        canvas.create_line(c, 4, c, PAD - 4, fill=GRID)          # crosshair vert.
+        canvas.create_line(4, c, PAD - 4, c, fill=GRID)          # crosshair orizz.
+        canvas.create_oval(c - half, c - half, c + half, c + half, outline=GRID)
+        px = c + self._clamp(x) * half           # X: destra = +
+        py = c - self._clamp(y) * half           # Y: su = + (schermo invertito)
+        canvas.create_oval(px - DOT_R, py - DOT_R, px + DOT_R, py + DOT_R,
+                           fill=color, outline="")
 
-        self.right_frame = tk.Frame(self.root)
-        self.right_frame.pack(side='right', padx=100)
+    def _draw_bar(self, canvas, z):
+        canvas.delete("all")
+        c = PAD / 2
+        top = c - self._clamp(z) * (PAD / 2 - 4)   # zero al centro, riempie col segno
+        canvas.create_line(2, c, BAR_W - 2, c, fill=GRID)
+        canvas.create_rectangle(4, min(c, top), BAR_W - 4, max(c, top),
+                                fill=BAR_COL, outline="")
 
-        self.right_label = tk.Label(self.right_frame, text='Right Joystick:')
-        self.right_label.pack(pady=(100, 0))
-
-        self.right_frame.columnconfigure(0, weight=1)
-
-        left_label_x = tk.Label(self.right_frame, text='RX:')
-        left_label_x.pack()
-
-        self.right_cursor_x = tk.Scale(self.right_frame, from_=1.0, to=-1.0, resolution=0.01, orient='vertical', length=150)
-        self.right_cursor_x.pack()
-
-        left_label_x = tk.Label(self.right_frame, text='RY:')
-        left_label_x.pack()
-
-        self.right_cursor_y = tk.Scale(self.right_frame, from_=-1.0, to=1.0, resolution=0.01, orient='horizontal', length=150)
-        self.right_cursor_y.pack()
-
-        left_label_x = tk.Label(self.right_frame, text='RZ:')
-        left_label_x.pack()
-
-        self.right_cursor_z = tk.Scale(self.right_frame, from_=-2.0, to=2.0, resolution=0.01, orient='horizontal', length=150)
-        self.right_cursor_z.pack()
-
-        self.update_gui_values()
-        self.node.create_timer(0.1, self.update_gui_values)
-
-    def right_callback(self, msg):
-        self.right_values = msg
-
-    def left_callback(self, msg):
-        self.left_values = msg
-
-    def update_gui_values(self):
-        self.left_cursor_x.set(self.left_values.x)
-        self.left_cursor_y.set(self.left_values.y)
-        self.left_cursor_z.set(self.left_values.z)
-
-        self.right_cursor_x.set(self.right_values.x)
-        self.right_cursor_y.set(self.right_values.y)
-        self.right_cursor_z.set(self.right_values.z)
-
-        self.root.update_idletasks()
+    # --- ciclo principale -------------------------------------------------
+    def _tick(self):
+        rclpy.spin_once(self.node, timeout_sec=0.0)
+        for key, w in self.widgets.items():
+            m = self.values[key]
+            self._draw_pad(w["pad"], m.x, m.y, w["color"])
+            self._draw_bar(w["bar"], m.z)
+            w["val"].config(text=f"X:{m.x:+.2f}  Y:{m.y:+.2f}  Z:{m.z:+.2f}")
+        self.root.after(REFRESH_MS, self._tick)
 
     def run(self):
-        rclpy.spin(self.node)
+        self.root.after(0, self._tick)
+        self.root.mainloop()
 
 
 def main(args=None):
     rclpy.init(args=args)
-    app = JoystickSubscriberApp()
-    app.run()
-    rclpy.shutdown()
+    node = rclpy.create_node("joystick_gui")
+    gui = JoypadGui(node)
+    try:
+        gui.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
