@@ -20,7 +20,7 @@ echo "Ricevo H.264 RTP su udp/${PORT} -> finestra sul 7\" (DISPLAY=${DISPLAY})"
 # avdec_h264 = decode SOFTWARE (sempre disponibile). Per il decode HW del Pi 4 vedi README.
 exec gst-launch-1.0 -v \
   udpsrc port="${PORT}" caps="application/x-rtp,media=video,encoding-name=H264,payload=96" ! \
-  rtpjitterbuffer latency=50 ! \
+  rtpjitterbuffer latency="${LATENCY:-200}" do-lost=true ! \
   rtph264depay ! \
   h264parse ! \
   avdec_h264 ! \
