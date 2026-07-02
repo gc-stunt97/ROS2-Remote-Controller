@@ -50,8 +50,6 @@ BAR_COL = "#a6e3a1"    # verde (barra Z)
 SIM_COL = "#a6e3a1"    # verde (SIM)
 REAL_COL = "#f38ba8"   # rosso (REAL)
 
-LEG_NAMES = ["FL", "FR", "ML", "MR", "RL", "RR", "ALL"]
-
 # Percorsi delle finestre avviabili dalla plancia (override con variabili d'ambiente).
 RVIZ_LAUNCH = os.path.expanduser(
     os.environ.get("ROBOTHEX_RVIZ_LAUNCH", "~/ros2_ws/viz/display.launch.py"))
@@ -164,6 +162,10 @@ class JoypadGui:
         self._build_side(joys, "LEFT", "left", DOT_LEFT, tk.LEFT)
         self._build_side(joys, "RIGHT", "right", DOT_RIGHT, tk.LEFT)
         self._build_simreal(left)
+        # Modalita' e Pattern stanno QUI (colonna sinistra, larga come i due joystick):
+        # cosi' i 3 bottoni del Pattern (tripod/ripple/wave) ci stanno tutti senza uscire
+        # dallo schermo, cosa che succedeva nel pannello destro (piu' stretto).
+        self._build_modepattern(left)
 
         panel = tk.Frame(main, bg=BG)
         panel.pack(side=tk.LEFT, anchor="n", padx=(16, 0))
@@ -232,6 +234,12 @@ class JoypadGui:
         p = tk.Frame(parent, bg=BG)
         p.pack(side=tk.TOP, fill=tk.X, padx=20, pady=(2, 14))
 
+        # IP di questo controller (utile per SSH / diagnosi rete). Letto all'avvio: in DHCP
+        # cambia di rado e leggerlo a ogni frame aprirebbe un socket 33 volte al secondo.
+        self._ip_lbl = tk.Label(p, text=f"IP controller: {self._my_ip() or '?'}",
+                                 bg=BG, fg=GRID, font=("TkFixedFont", 9))
+        self._ip_lbl.pack(anchor="w", pady=(0, 6))
+
         tk.Label(p, text="FINESTRE", bg=BG, fg=FG,
                  font=("TkDefaultFont", 12, "bold")).pack(anchor="w", pady=(0, 4))
         wins = tk.Frame(p, bg=BG)
@@ -247,38 +255,58 @@ class JoypadGui:
         tk.Label(p, text="CONTROLLO ROBOT", bg=BG, fg=FG,
                  font=("TkDefaultFont", 12, "bold")).pack(anchor="w", pady=(0, 6))
 
-        self._segmented(p, "Modalita'", [("Manuale", "leg_manual"), ("Gait", "gait")],
-                        "leg_manual",
-                        lambda v: self._set_param("teleop", "left_stick_mode", v))
-        self._segmented(p, "Pattern",
-                        [("tripod", "tripod"), ("ripple", "ripple"), ("wave", "wave")],
-                        "ripple",
-                        lambda v: self._set_param("teleop", "gait_pattern", v))
-
-        legrow = tk.Frame(p, bg=BG)
-        legrow.pack(anchor="w", pady=3)
-        tk.Label(legrow, text="Gamba:", bg=BG, fg=FG, width=10, anchor="w").pack(side=tk.LEFT)
-        self._sel_leg = tk.StringVar(value="FL")
-        om = tk.OptionMenu(legrow, self._sel_leg, *LEG_NAMES,
-                           command=lambda v: self._set_param("teleop", "selected_leg", v))
-        om.configure(bg=BTN, fg=FG, activebackground=SEL, highlightthickness=0,
-                     relief=tk.FLAT, width=6)
-        om["menu"].configure(bg=BTN, fg=FG)
-        om.pack(side=tk.LEFT)
+        # Gambe (modalita' Manuale): SPUNTE multiple -> se ne muovono piu' di una insieme.
+        # Disposte come la vista dall'alto del robot (FL FR / ML MR / RL RR) per intuitivita'.
+        tk.Label(p, text="Gambe (Manuale):", bg=BG, fg=FG,
+                 anchor="w").pack(anchor="w", pady=(6, 2))
+        grid = tk.Frame(p, bg=BG)
+        grid.pack(anchor="w", pady=(0, 2))
+        self._leg_vars = {}
+        for r, rowlegs in enumerate([("FL", "FR"), ("ML", "MR"), ("RL", "RR")]):
+            for c, leg in enumerate(rowlegs):
+                var = tk.BooleanVar(value=(leg == "FL"))   # FL spuntata all'avvio (default)
+                cb = tk.Checkbutton(grid, text=leg, variable=var, command=self._on_legs,
+                                    bg=BG, fg=FG, selectcolor=BTN, activebackground=BG,
+                                    activeforeground=FG, width=4, anchor="w",
+                                    highlightthickness=0)
+                cb.grid(row=r, column=c, padx=2, pady=1, sticky="w")
+                self._leg_vars[leg] = var
+        qrow = tk.Frame(p, bg=BG)
+        qrow.pack(anchor="w", pady=(0, 4))
+        tk.Button(qrow, text="Tutte", bg=BTN, fg=FG, relief=tk.FLAT, width=6,
+                  command=lambda: self._set_all_legs(True)).pack(side=tk.LEFT, padx=2)
+        tk.Button(qrow, text="Nessuna", bg=BTN, fg=FG, relief=tk.FLAT, width=7,
+                  command=lambda: self._set_all_legs(False)).pack(side=tk.LEFT, padx=2)
 
         self._slider(p, "stride (mm)", 0, 100, 60, "teleop", "stride")
         self._slider(p, "period (s)", 0.5, 4.0, 2.0, "teleop", "period", res=0.1)
         self._slider(p, "duty", 0.3, 0.9, 0.5, "teleop", "duty", res=0.05)
-        self._slider(p, "stance_up (mm)", -130, -60, -100, "teleop", "stance_up")
+        # stance_up: corpo piu' alto = piu' negativo. Limite fisico -140 (gamba L=140 mm:
+        # oltre, l'IK va fuori portata e la zampa non risponde). Vedi nota nel messaggio.
+        self._slider(p, "stance_up (mm)", -140, -60, -100, "teleop", "stance_up")
 
     def _build_simreal(self, parent):
         """Toggle SIM/REAL (comando di sicurezza) — sotto i joystick, sempre visibile."""
         f = tk.Frame(parent, bg=BG)
         f.pack(side=tk.TOP, fill=tk.X, pady=(12, 0), padx=4)
+        # height=1 (piu' basso di prima) per lasciare spazio a Modalita'/Pattern e a
+        # controlli futuri; resta comunque ben visibile perche' occupa tutta la larghezza.
         self._simreal = tk.Button(f, text="SIM  —  servi spenti", bg=SIM_COL, fg=INK,
-                                   font=("TkDefaultFont", 14, "bold"), relief=tk.FLAT,
-                                   height=2, command=self._toggle_simreal)
+                                   font=("TkDefaultFont", 13, "bold"), relief=tk.FLAT,
+                                   height=1, command=self._toggle_simreal)
         self._simreal.pack(fill=tk.X)
+
+    def _build_modepattern(self, parent):
+        """Modalita' (Manuale/Gait) e Pattern (tripod/ripple/wave) sotto il toggle SIM/REAL."""
+        f = tk.Frame(parent, bg=BG)
+        f.pack(side=tk.TOP, fill=tk.X, pady=(10, 0), padx=4)
+        self._segmented(f, "Modalita'", [("Manuale", "leg_manual"), ("Gait", "gait")],
+                        "leg_manual",
+                        lambda v: self._set_param("teleop", "left_stick_mode", v))
+        self._segmented(f, "Pattern",
+                        [("tripod", "tripod"), ("ripple", "ripple"), ("wave", "wave")],
+                        "ripple",
+                        lambda v: self._set_param("teleop", "gait_pattern", v))
 
     def _segmented(self, parent, label, options, default, on):
         row = tk.Frame(parent, bg=BG)
@@ -313,6 +341,20 @@ class JoypadGui:
         s.configure(command=lambda v: self._set_param(target, name, float(v)))
         s.pack(side=tk.LEFT)
         return s
+
+    def _on_legs(self):
+        """Spunte gambe -> parametro selected_leg del teleop (CSV, o 'ALL' se tutte)."""
+        sel = [leg for leg, v in self._leg_vars.items() if v.get()]
+        if len(sel) == len(self._leg_vars):
+            value = "ALL"                 # tutte spuntate -> piu' compatto
+        else:
+            value = ",".join(sel)         # es. 'FL,MR,RR'; nessuna -> "" (robot non muove)
+        self._set_param("teleop", "selected_leg", value)
+
+    def _set_all_legs(self, on):
+        for v in self._leg_vars.values():
+            v.set(on)
+        self._on_legs()
 
     def _toggle_simreal(self):
         if not self._real:   # sto per attivare i servi VERI -> conferma di sicurezza
