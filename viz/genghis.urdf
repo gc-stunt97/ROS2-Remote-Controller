@@ -1,0 +1,510 @@
+<?xml version="1.0"?>
+<!-- GENERATO da description/gen_urdf.py — NON modificare a mano. -->
+<robot name="genghis">
+  <material name="alu"><color rgba="0.75 0.75 0.78 1"/></material>
+  <material name="servo"><color rgba="0.12 0.12 0.12 1"/></material>
+  <material name="leg"><color rgba="0.85 0.85 0.88 1"/></material>
+  <material name="foot"><color rgba="0.15 0.15 0.15 1"/></material>
+  <material name="head"><color rgba="0.10 0.35 0.85 1"/></material>
+  <material name="cam"><color rgba="0.05 0.05 0.05 1"/></material>
+  <link name="base_link">
+    <visual>
+      <origin xyz="0.035 0 -0.023" rpy="0 0 0"/>
+      <geometry><box size="0.4 0.01 0.01"/></geometry>
+      <material name="alu"/>
+    </visual>
+    <visual>
+      <origin xyz="0.035 0 0.027" rpy="0 0 0"/>
+      <geometry><box size="0.4 0.01 0.01"/></geometry>
+      <material name="alu"/>
+    </visual>
+    <visual>
+      <origin xyz="0.165 0 0.027" rpy="0 0 0"/>
+      <geometry><box size="0.01 0.085 0.01"/></geometry>
+      <material name="alu"/>
+    </visual>
+    <visual>
+      <origin xyz="0.165 0 -0.023" rpy="0 0 0"/>
+      <geometry><box size="0.01 0.085 0.01"/></geometry>
+      <material name="alu"/>
+    </visual>
+    <visual>
+      <origin xyz="0.0 0 0.027" rpy="0 0 0"/>
+      <geometry><box size="0.01 0.085 0.01"/></geometry>
+      <material name="alu"/>
+    </visual>
+    <visual>
+      <origin xyz="0.0 0 -0.023" rpy="0 0 0"/>
+      <geometry><box size="0.01 0.085 0.01"/></geometry>
+      <material name="alu"/>
+    </visual>
+    <visual>
+      <origin xyz="-0.165 0 0.027" rpy="0 0 0"/>
+      <geometry><box size="0.01 0.085 0.01"/></geometry>
+      <material name="alu"/>
+    </visual>
+    <visual>
+      <origin xyz="-0.165 0 -0.023" rpy="0 0 0"/>
+      <geometry><box size="0.01 0.085 0.01"/></geometry>
+      <material name="alu"/>
+    </visual>
+    <collision>
+      <origin xyz="0.035 0 0.002" rpy="0 0 0"/>
+      <geometry><box size="0.4 0.085 0.06"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.6"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.006" iyz="0" izz="0.006"/>
+    </inertial>
+  </link>
+
+  <!-- ===== gamba FL (L, front) ===== -->
+  <joint name="FL_swing" type="revolute">
+    <parent link="base_link"/>
+    <child link="FL_shoulder"/>
+    <origin xyz="0.165 0.0375 0.0" rpy="0 0 0"/>
+    <axis xyz="0 0 -1.0"/>
+    <limit lower="-0.9" upper="0.9" effort="10" velocity="6"/>
+  </joint>
+  <link name="FL_shoulder">
+    <visual>
+      <origin xyz="0.02 0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+      <material name="servo"/>
+    </visual>
+    <collision>
+      <origin xyz="0.02 0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="FL_lift" type="revolute">
+    <parent link="FL_shoulder"/>
+    <child link="FL_leg"/>
+    <origin xyz="0.04 0.02 0.0" rpy="0 0 0"/>
+    <axis xyz="-1.0 0 0"/>
+    <limit lower="-0.4" upper="1.4" effort="10" velocity="6"/>
+  </joint>
+  <link name="FL_leg">
+    <visual>
+      <origin xyz="0.0 0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+      <material name="leg"/>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.03"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="FL_foot_joint" type="fixed">
+    <parent link="FL_leg"/>
+    <child link="FL_foot"/>
+    <origin xyz="0.0 0.14 0.0" rpy="0 0 0"/>
+  </joint>
+  <link name="FL_foot">
+    <visual>
+      <geometry><sphere radius="0.006"/></geometry>
+      <material name="foot"/>
+    </visual>
+    <collision>
+      <geometry><sphere radius="0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <!-- ===== gamba FR (R, front) ===== -->
+  <joint name="FR_swing" type="revolute">
+    <parent link="base_link"/>
+    <child link="FR_shoulder"/>
+    <origin xyz="0.165 -0.0375 0.0" rpy="0 0 0"/>
+    <axis xyz="0 0 1.0"/>
+    <limit lower="-0.9" upper="0.9" effort="10" velocity="6"/>
+  </joint>
+  <link name="FR_shoulder">
+    <visual>
+      <origin xyz="0.02 -0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+      <material name="servo"/>
+    </visual>
+    <collision>
+      <origin xyz="0.02 -0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="FR_lift" type="revolute">
+    <parent link="FR_shoulder"/>
+    <child link="FR_leg"/>
+    <origin xyz="0.04 -0.02 0.0" rpy="0 0 0"/>
+    <axis xyz="1.0 0 0"/>
+    <limit lower="-0.4" upper="1.4" effort="10" velocity="6"/>
+  </joint>
+  <link name="FR_leg">
+    <visual>
+      <origin xyz="0.0 -0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+      <material name="leg"/>
+    </visual>
+    <collision>
+      <origin xyz="0.0 -0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.03"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="FR_foot_joint" type="fixed">
+    <parent link="FR_leg"/>
+    <child link="FR_foot"/>
+    <origin xyz="0.0 -0.14 0.0" rpy="0 0 0"/>
+  </joint>
+  <link name="FR_foot">
+    <visual>
+      <geometry><sphere radius="0.006"/></geometry>
+      <material name="foot"/>
+    </visual>
+    <collision>
+      <geometry><sphere radius="0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <!-- ===== gamba ML (L, mid) ===== -->
+  <joint name="ML_swing" type="revolute">
+    <parent link="base_link"/>
+    <child link="ML_shoulder"/>
+    <origin xyz="0.0 0.0375 0.0" rpy="0 0 0"/>
+    <axis xyz="0 0 -1.0"/>
+    <limit lower="-0.9" upper="0.9" effort="10" velocity="6"/>
+  </joint>
+  <link name="ML_shoulder">
+    <visual>
+      <origin xyz="0.02 0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+      <material name="servo"/>
+    </visual>
+    <collision>
+      <origin xyz="0.02 0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="ML_lift" type="revolute">
+    <parent link="ML_shoulder"/>
+    <child link="ML_leg"/>
+    <origin xyz="0.04 0.02 0.0" rpy="0 0 0"/>
+    <axis xyz="-1.0 0 0"/>
+    <limit lower="-0.4" upper="1.4" effort="10" velocity="6"/>
+  </joint>
+  <link name="ML_leg">
+    <visual>
+      <origin xyz="0.0 0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+      <material name="leg"/>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.03"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="ML_foot_joint" type="fixed">
+    <parent link="ML_leg"/>
+    <child link="ML_foot"/>
+    <origin xyz="0.0 0.14 0.0" rpy="0 0 0"/>
+  </joint>
+  <link name="ML_foot">
+    <visual>
+      <geometry><sphere radius="0.006"/></geometry>
+      <material name="foot"/>
+    </visual>
+    <collision>
+      <geometry><sphere radius="0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <!-- ===== gamba MR (R, mid) ===== -->
+  <joint name="MR_swing" type="revolute">
+    <parent link="base_link"/>
+    <child link="MR_shoulder"/>
+    <origin xyz="0.0 -0.0375 0.0" rpy="0 0 0"/>
+    <axis xyz="0 0 1.0"/>
+    <limit lower="-0.9" upper="0.9" effort="10" velocity="6"/>
+  </joint>
+  <link name="MR_shoulder">
+    <visual>
+      <origin xyz="0.02 -0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+      <material name="servo"/>
+    </visual>
+    <collision>
+      <origin xyz="0.02 -0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="MR_lift" type="revolute">
+    <parent link="MR_shoulder"/>
+    <child link="MR_leg"/>
+    <origin xyz="0.04 -0.02 0.0" rpy="0 0 0"/>
+    <axis xyz="1.0 0 0"/>
+    <limit lower="-0.4" upper="1.4" effort="10" velocity="6"/>
+  </joint>
+  <link name="MR_leg">
+    <visual>
+      <origin xyz="0.0 -0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+      <material name="leg"/>
+    </visual>
+    <collision>
+      <origin xyz="0.0 -0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.03"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="MR_foot_joint" type="fixed">
+    <parent link="MR_leg"/>
+    <child link="MR_foot"/>
+    <origin xyz="0.0 -0.14 0.0" rpy="0 0 0"/>
+  </joint>
+  <link name="MR_foot">
+    <visual>
+      <geometry><sphere radius="0.006"/></geometry>
+      <material name="foot"/>
+    </visual>
+    <collision>
+      <geometry><sphere radius="0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <!-- ===== gamba RL (L, rear) ===== -->
+  <joint name="RL_swing" type="revolute">
+    <parent link="base_link"/>
+    <child link="RL_shoulder"/>
+    <origin xyz="-0.165 0.0375 0.0" rpy="0 0 0"/>
+    <axis xyz="0 0 -1.0"/>
+    <limit lower="-0.9" upper="0.9" effort="10" velocity="6"/>
+  </joint>
+  <link name="RL_shoulder">
+    <visual>
+      <origin xyz="-0.02 0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+      <material name="servo"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.02 0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="RL_lift" type="revolute">
+    <parent link="RL_shoulder"/>
+    <child link="RL_leg"/>
+    <origin xyz="-0.04 0.02 0.0" rpy="0 0 0"/>
+    <axis xyz="-1.0 0 0"/>
+    <limit lower="-0.4" upper="1.4" effort="10" velocity="6"/>
+  </joint>
+  <link name="RL_leg">
+    <visual>
+      <origin xyz="0.0 0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+      <material name="leg"/>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.03"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="RL_foot_joint" type="fixed">
+    <parent link="RL_leg"/>
+    <child link="RL_foot"/>
+    <origin xyz="0.0 0.14 0.0" rpy="0 0 0"/>
+  </joint>
+  <link name="RL_foot">
+    <visual>
+      <geometry><sphere radius="0.006"/></geometry>
+      <material name="foot"/>
+    </visual>
+    <collision>
+      <geometry><sphere radius="0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <!-- ===== gamba RR (R, rear) ===== -->
+  <joint name="RR_swing" type="revolute">
+    <parent link="base_link"/>
+    <child link="RR_shoulder"/>
+    <origin xyz="-0.165 -0.0375 0.0" rpy="0 0 0"/>
+    <axis xyz="0 0 1.0"/>
+    <limit lower="-0.9" upper="0.9" effort="10" velocity="6"/>
+  </joint>
+  <link name="RR_shoulder">
+    <visual>
+      <origin xyz="-0.02 -0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+      <material name="servo"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.02 -0.01 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.05 0.03 0.02"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="RR_lift" type="revolute">
+    <parent link="RR_shoulder"/>
+    <child link="RR_leg"/>
+    <origin xyz="-0.04 -0.02 0.0" rpy="0 0 0"/>
+    <axis xyz="1.0 0 0"/>
+    <limit lower="-0.4" upper="1.4" effort="10" velocity="6"/>
+  </joint>
+  <link name="RR_leg">
+    <visual>
+      <origin xyz="0.0 -0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+      <material name="leg"/>
+    </visual>
+    <collision>
+      <origin xyz="0.0 -0.07 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.14 0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.03"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="RR_foot_joint" type="fixed">
+    <parent link="RR_leg"/>
+    <child link="RR_foot"/>
+    <origin xyz="0.0 -0.14 0.0" rpy="0 0 0"/>
+  </joint>
+  <link name="RR_foot">
+    <visual>
+      <geometry><sphere radius="0.006"/></geometry>
+      <material name="foot"/>
+    </visual>
+    <collision>
+      <geometry><sphere radius="0.006"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
+  <!-- ===== testa pan/tilt + camera ===== -->
+  <joint name="head_pan_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="head_pan"/>
+    <origin xyz="0.165 0.0 0.032" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.57" upper="1.57" effort="10" velocity="6"/>
+  </joint>
+  <link name="head_pan">
+    <visual>
+      <origin xyz="0.01 0.0 0.025" rpy="0 0 0"/>
+      <geometry><box size="0.02 0.02 0.05"/></geometry>
+      <material name="head"/>
+    </visual>
+    <collision>
+      <origin xyz="0.01 0.0 0.025" rpy="0 0 0"/>
+      <geometry><box size="0.02 0.02 0.05"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.03"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="head_tilt_joint" type="revolute">
+    <parent link="head_pan"/>
+    <child link="head_tilt"/>
+    <origin xyz="0.02 0.0 0.05" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.8" upper="0.8" effort="10" velocity="6"/>
+  </joint>
+  <link name="head_tilt">
+    <visual>
+      <origin xyz="0.0125 0.0 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.025 0.03 0.02"/></geometry>
+      <material name="head"/>
+    </visual>
+    <collision>
+      <origin xyz="0.0125 0.0 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.025 0.03 0.02"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.02"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <joint name="camera_joint" type="fixed">
+    <parent link="head_tilt"/>
+    <child link="camera_link"/>
+    <origin xyz="0.025 0.0 0.0" rpy="0 0 0"/>
+  </joint>
+  <link name="camera_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.012 0.012"/></geometry>
+      <material name="cam"/>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+      <geometry><box size="0.006 0.012 0.012"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.005"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+</robot>
