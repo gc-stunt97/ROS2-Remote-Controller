@@ -1,50 +1,60 @@
 #!/usr/bin/env python3
-"""GUI dei joystick — "plancia 2D".
+"""GUI dei joystick + PLANCIA di controllo robot — "plancia 2D".
 
-Ogni joystick e' mostrato come un pad quadrato con un pallino che segue X
-(orizzontale) e Y (verticale), con crosshair e cerchio di fondo scala; accanto
-una barra verticale per lo Z (yaw), e sotto i valori numerici.
+In alto: i due joystick come pad quadrati con pallino che segue X/Y, crosshair,
+barra Z (yaw), valori numerici. Il pallino e' vuoto a riposo, pieno col tastino.
 
-Il pallino e' VUOTO (solo bordo) a riposo e si RIEMPIE mentre tieni premuto il
-tastino in cima al joystick (topic left_button / right_button).
+In basso: sezione "CONTROLLO ROBOT" (touch-friendly), che sostituisce i comandi
+`ros2 param set` da terminale. Setta i parametri dei nodi sul ROBOT via il
+parameter service (WiFi/DDS):
+  - Modalita' (Manuale/Gait)  -> /teleop  left_stick_mode
+  - Pattern (tripod/ripple/wave) -> /teleop gait_pattern
+  - Gamba (FL..RR, ALL)       -> /teleop  selected_leg
+  - Slider stride/period/duty/stance_up -> /teleop
+  - Toggle SIM <-> REAL       -> /servo_node enabled  (con conferma prima del REAL)
 
-Sottoscrive:
-- left_joystick_data / right_joystick_data  (geometry_msgs/Point)
-- left_button / right_button                (std_msgs/Bool)
-
-Si puo' provare SENZA robot: basta controller + STM32 collegato (+ joy_node).
-
-Integrazione ROS+Tk: il ciclo lo guida Tkinter (`mainloop`); a ogni tick facciamo
-`spin_once` per far girare le callback ROS e poi ridisegniamo.
+Sottoscrive: left/right_joystick_data (Point), left/right_button (Bool).
+Integrazione ROS+Tk: il ciclo lo guida Tkinter (mainloop); a ogni tick spin_once.
 """
 
 import tkinter as tk
+from tkinter import messagebox
 
 import rclpy
 from geometry_msgs.msg import Point
 from std_msgs.msg import Bool
+from rcl_interfaces.srv import SetParameters
+from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 
-# --- estetica ---
-PAD = 220        # lato del pad quadrato (px)
+# --- estetica (catppuccin) ---
+PAD = 200        # lato del pad quadrato (px)
 DOT_R = 9        # raggio del pallino
-BAR_W = 30       # larghezza della barra Z
+BAR_W = 28       # larghezza della barra Z
 REFRESH_MS = 30  # ~33 Hz di ridisegno
 
 BG = "#1e1e2e"
 FG = "#cdd6f4"
 GRID = "#45475a"
+BTN = "#313244"        # bottone a riposo
+SEL = "#89b4fa"        # selezionato (blu)
+INK = "#11111b"        # testo su sfondo chiaro
 DOT_LEFT = "#89b4fa"   # blu (joystick sinistro)
 DOT_RIGHT = "#f38ba8"  # rosa (joystick destro)
 BAR_COL = "#a6e3a1"    # verde (barra Z)
+SIM_COL = "#a6e3a1"    # verde (SIM)
+REAL_COL = "#f38ba8"   # rosso (REAL)
+
+LEG_NAMES = ["FL", "FR", "ML", "MR", "RL", "RR", "ALL"]
 
 
 class JoypadGui:
-    """Finestra Tkinter che visualizza i due joystick in tempo reale."""
+    """Finestra Tkinter: visualizza i due joystick + plancia di controllo robot."""
 
     def __init__(self, node):
         self.node = node
         self.values = {"left": Point(), "right": Point()}
         self.buttons = {"left": False, "right": False}
+        self._real = False
 
         node.create_subscription(
             Point, "left_joystick_data", lambda m: self._store("left", m), 10)
@@ -55,21 +65,63 @@ class JoypadGui:
         node.create_subscription(
             Bool, "right_button", lambda m: self._store_btn("right", m), 10)
 
+        # client dei parameter service dei nodi sul robot
+        self._param_clients = {
+            "teleop": node.create_client(SetParameters, "/teleop/set_parameters"),
+            "servo_node": node.create_client(SetParameters, "/servo_node/set_parameters"),
+        }
+
         self.root = tk.Tk()
-        self.root.title("Joystick — RobotHex controller")
+        self.root.title("RobotHex — controller")
         self.root.configure(bg=BG)
 
+        top = tk.Frame(self.root, bg=BG)
+        top.pack(side=tk.TOP)
         self.widgets = {}
-        self._build_side("LEFT", "left", DOT_LEFT, tk.LEFT)
-        self._build_side("RIGHT", "right", DOT_RIGHT, tk.RIGHT)
+        self._build_side(top, "LEFT", "left", DOT_LEFT, tk.LEFT)
+        self._build_side(top, "RIGHT", "right", DOT_RIGHT, tk.RIGHT)
 
-    # --- costruzione UI ---------------------------------------------------
-    def _build_side(self, title, key, dot_color, side):
-        frame = tk.Frame(self.root, bg=BG)
-        frame.pack(side=side, padx=24, pady=16)
+        self._build_panel(self.root)
+
+    # --- invio parametri ai nodi del robot --------------------------------
+    @staticmethod
+    def _make_param(name, value):
+        p = Parameter()
+        p.name = name
+        v = ParameterValue()
+        if isinstance(value, bool):            # bool PRIMA di int (bool e' sottotipo di int)
+            v.type = ParameterType.PARAMETER_BOOL
+            v.bool_value = value
+        elif isinstance(value, int):
+            v.type = ParameterType.PARAMETER_INTEGER
+            v.integer_value = value
+        elif isinstance(value, float):
+            v.type = ParameterType.PARAMETER_DOUBLE
+            v.double_value = value
+        else:
+            v.type = ParameterType.PARAMETER_STRING
+            v.string_value = str(value)
+        p.value = v
+        return p
+
+    def _set_param(self, target, name, value):
+        cli = self._param_clients[target]
+        if not cli.service_is_ready():
+            self.node.get_logger().warn(
+                f"/{target} non raggiungibile: il nodo gira sul robot? "
+                f"({name}={value} non inviato)")
+            return
+        req = SetParameters.Request()
+        req.parameters = [self._make_param(name, value)]
+        cli.call_async(req)   # fire-and-forget: la risposta la smaltisce spin_once
+
+    # --- costruzione UI: joystick -----------------------------------------
+    def _build_side(self, parent, title, key, dot_color, side):
+        frame = tk.Frame(parent, bg=BG)
+        frame.pack(side=side, padx=20, pady=(12, 6))
 
         tk.Label(frame, text=title, bg=BG, fg=FG,
-                 font=("TkDefaultFont", 14, "bold")).pack(pady=(0, 8))
+                 font=("TkDefaultFont", 13, "bold")).pack(pady=(0, 6))
 
         row = tk.Frame(frame, bg=BG)
         row.pack()
@@ -78,13 +130,97 @@ class JoypadGui:
         pad.pack(side=tk.LEFT)
         bar = tk.Canvas(row, width=BAR_W, height=PAD, bg=BG,
                         highlightthickness=1, highlightbackground=GRID)
-        bar.pack(side=tk.LEFT, padx=(10, 0))
+        bar.pack(side=tk.LEFT, padx=(8, 0))
 
         val = tk.Label(frame, text="X:+0.00  Y:+0.00  Z:+0.00", bg=BG, fg=FG,
-                       font=("TkFixedFont", 11))
-        val.pack(pady=(8, 0))
+                       font=("TkFixedFont", 10))
+        val.pack(pady=(6, 0))
 
         self.widgets[key] = {"pad": pad, "bar": bar, "val": val, "color": dot_color}
+
+    # --- costruzione UI: plancia di controllo -----------------------------
+    def _build_panel(self, parent):
+        p = tk.Frame(parent, bg=BG)
+        p.pack(side=tk.TOP, fill=tk.X, padx=20, pady=(2, 14))
+
+        tk.Label(p, text="CONTROLLO ROBOT", bg=BG, fg=FG,
+                 font=("TkDefaultFont", 12, "bold")).pack(anchor="w", pady=(0, 6))
+
+        self._segmented(p, "Modalita'", [("Manuale", "leg_manual"), ("Gait", "gait")],
+                        "leg_manual",
+                        lambda v: self._set_param("teleop", "left_stick_mode", v))
+        self._segmented(p, "Pattern",
+                        [("tripod", "tripod"), ("ripple", "ripple"), ("wave", "wave")],
+                        "ripple",
+                        lambda v: self._set_param("teleop", "gait_pattern", v))
+
+        legrow = tk.Frame(p, bg=BG)
+        legrow.pack(anchor="w", pady=3)
+        tk.Label(legrow, text="Gamba:", bg=BG, fg=FG, width=10, anchor="w").pack(side=tk.LEFT)
+        self._sel_leg = tk.StringVar(value="FL")
+        om = tk.OptionMenu(legrow, self._sel_leg, *LEG_NAMES,
+                           command=lambda v: self._set_param("teleop", "selected_leg", v))
+        om.configure(bg=BTN, fg=FG, activebackground=SEL, highlightthickness=0,
+                     relief=tk.FLAT, width=6)
+        om["menu"].configure(bg=BTN, fg=FG)
+        om.pack(side=tk.LEFT)
+
+        self._slider(p, "stride (mm)", 0, 100, 60, "teleop", "stride")
+        self._slider(p, "period (s)", 0.5, 4.0, 2.0, "teleop", "period", res=0.1)
+        self._slider(p, "duty", 0.3, 0.9, 0.5, "teleop", "duty", res=0.05)
+        self._slider(p, "stance_up (mm)", -130, -60, -100, "teleop", "stance_up")
+
+        self._simreal = tk.Button(p, text="SIM  (servi spenti)", bg=SIM_COL, fg=INK,
+                                   font=("TkDefaultFont", 12, "bold"), relief=tk.FLAT,
+                                   command=self._toggle_simreal)
+        self._simreal.pack(anchor="w", fill=tk.X, pady=(8, 0))
+
+    def _segmented(self, parent, label, options, default, on):
+        row = tk.Frame(parent, bg=BG)
+        row.pack(anchor="w", pady=3)
+        tk.Label(row, text=label + ":", bg=BG, fg=FG, width=10, anchor="w").pack(side=tk.LEFT)
+        btns = {}
+
+        def highlight(val):
+            for v, b in btns.items():
+                b.configure(bg=SEL if v == val else BTN, fg=INK if v == val else FG)
+
+        def select(val):
+            highlight(val)
+            on(val)
+
+        for text, val in options:
+            b = tk.Button(row, text=text, bg=BTN, fg=FG, width=8, relief=tk.FLAT,
+                          command=lambda v=val: select(v))
+            b.pack(side=tk.LEFT, padx=2)
+            btns[val] = b
+        highlight(default)    # solo evidenza all'avvio, senza sparare il parametro
+        return btns
+
+    def _slider(self, parent, label, lo, hi, default, target, name, res=1.0):
+        row = tk.Frame(parent, bg=BG)
+        row.pack(anchor="w", pady=2, fill=tk.X)
+        tk.Label(row, text=label, bg=BG, fg=FG, width=14, anchor="w").pack(side=tk.LEFT)
+        s = tk.Scale(row, from_=lo, to=hi, resolution=res, orient=tk.HORIZONTAL,
+                     bg=BG, fg=FG, troughcolor=GRID, highlightthickness=0,
+                     length=250, sliderrelief=tk.FLAT)
+        s.set(default)        # imposta prima di cablare il command -> niente invio all'avvio
+        s.configure(command=lambda v: self._set_param(target, name, float(v)))
+        s.pack(side=tk.LEFT)
+        return s
+
+    def _toggle_simreal(self):
+        if not self._real:   # sto per attivare i servi VERI -> conferma di sicurezza
+            if not messagebox.askyesno(
+                    "Attiva REAL",
+                    "Attivare i SERVI VERI?\nIl robot si muovera' secondo il comando corrente."):
+                return
+        self._real = not self._real
+        self._set_param("servo_node", "enabled", self._real)
+        if self._real:
+            self._simreal.configure(text="REAL  (servi ATTIVI)", bg=REAL_COL)
+        else:
+            self._simreal.configure(text="SIM  (servi spenti)", bg=SIM_COL)
 
     # --- callback ROS -----------------------------------------------------
     def _store(self, key, msg):
@@ -102,22 +238,22 @@ class JoypadGui:
         canvas.delete("all")
         c = PAD / 2
         half = PAD / 2 - DOT_R - 2
-        canvas.create_line(c, 4, c, PAD - 4, fill=GRID)          # crosshair vert.
-        canvas.create_line(4, c, PAD - 4, c, fill=GRID)          # crosshair orizz.
+        canvas.create_line(c, 4, c, PAD - 4, fill=GRID)
+        canvas.create_line(4, c, PAD - 4, c, fill=GRID)
         canvas.create_oval(c - half, c - half, c + half, c + half, outline=GRID)
         px = c + self._clamp(x) * half           # X: destra = +
         py = c - self._clamp(y) * half           # Y: su = + (schermo invertito)
-        if pressed:                              # tastino premuto -> pallino pieno
+        if pressed:
             canvas.create_oval(px - DOT_R, py - DOT_R, px + DOT_R, py + DOT_R,
                                fill=color, outline="")
-        else:                                    # a riposo -> solo bordo (vuoto)
+        else:
             canvas.create_oval(px - DOT_R, py - DOT_R, px + DOT_R, py + DOT_R,
                                outline=color, width=2)
 
     def _draw_bar(self, canvas, z):
         canvas.delete("all")
         c = PAD / 2
-        top = c - self._clamp(z) * (PAD / 2 - 4)   # zero al centro, riempie col segno
+        top = c - self._clamp(z) * (PAD / 2 - 4)
         canvas.create_line(2, c, BAR_W - 2, c, fill=GRID)
         canvas.create_rectangle(4, min(c, top), BAR_W - 4, max(c, top),
                                 fill=BAR_COL, outline="")
