@@ -27,9 +27,9 @@ from rcl_interfaces.srv import SetParameters
 from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 
 # --- estetica (catppuccin) ---
-PAD = 200        # lato del pad quadrato (px)
-DOT_R = 9        # raggio del pallino
-BAR_W = 28       # larghezza della barra Z
+PAD = 165        # lato del pad quadrato (px) — contenuto entro i 600px del 7"
+DOT_R = 8        # raggio del pallino
+BAR_W = 26       # larghezza della barra Z
 REFRESH_MS = 30  # ~33 Hz di ridisegno
 
 BG = "#1e1e2e"
@@ -75,13 +75,19 @@ class JoypadGui:
         self.root.title("RobotHex — controller")
         self.root.configure(bg=BG)
 
-        top = tk.Frame(self.root, bg=BG)
-        top.pack(side=tk.TOP)
+        # Layout ORIZZONTALE: joystick a sinistra, plancia di controllo a destra.
+        # Cosi' l'altezza resta bassa e ci sta tutto sui 600px del display 7".
+        main = tk.Frame(self.root, bg=BG)
+        main.pack(side=tk.TOP, padx=10, pady=6)
         self.widgets = {}
-        self._build_side(top, "LEFT", "left", DOT_LEFT, tk.LEFT)
-        self._build_side(top, "RIGHT", "right", DOT_RIGHT, tk.RIGHT)
+        joys = tk.Frame(main, bg=BG)
+        joys.pack(side=tk.LEFT, anchor="n")
+        self._build_side(joys, "LEFT", "left", DOT_LEFT, tk.LEFT)
+        self._build_side(joys, "RIGHT", "right", DOT_RIGHT, tk.LEFT)
 
-        self._build_panel(self.root)
+        panel = tk.Frame(main, bg=BG)
+        panel.pack(side=tk.LEFT, anchor="n", padx=(16, 0))
+        self._build_panel(panel)
 
     # --- invio parametri ai nodi del robot --------------------------------
     @staticmethod
@@ -203,7 +209,7 @@ class JoypadGui:
         tk.Label(row, text=label, bg=BG, fg=FG, width=14, anchor="w").pack(side=tk.LEFT)
         s = tk.Scale(row, from_=lo, to=hi, resolution=res, orient=tk.HORIZONTAL,
                      bg=BG, fg=FG, troughcolor=GRID, highlightthickness=0,
-                     length=250, sliderrelief=tk.FLAT)
+                     length=200, sliderrelief=tk.FLAT)
         s.set(default)        # imposta prima di cablare il command -> niente invio all'avvio
         s.configure(command=lambda v: self._set_param(target, name, float(v)))
         s.pack(side=tk.LEFT)
