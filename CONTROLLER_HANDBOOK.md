@@ -4,6 +4,10 @@
 > robot ROS2). Questo documento è la **fonte di verità** del progetto controller:
 > hardware, architettura, come si avvia, firmware, problemi noti, roadmap.
 > Da leggere all'inizio di ogni ripresa. Compagno del `ROBOTHEX_HANDBOOK.md` (lato robot).
+>
+> 📘 **Per il quadro d'insieme del SISTEMA** (architettura ROS di robot+controller, come si
+> usa, comandi ROS, troubleshooting) → `MANUALE.md` nel repo **RobotHex**. Questo file resta
+> per i dettagli specifici del controller.
 
 ---
 
