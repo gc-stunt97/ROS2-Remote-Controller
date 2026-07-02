@@ -18,9 +18,12 @@ echo "Ricevo H.264 RTP su udp/${PORT} -> finestra sul 7\" (DISPLAY=${DISPLAY})"
 
 # udpsrc -> jitterbuffer (assorbe il jitter di rete) -> depay -> decode -> schermo.
 # avdec_h264 = decode SOFTWARE (sempre disponibile). Per il decode HW del Pi 4 vedi README.
+# buffer-size: buffer socket UDP grande (assorbe le RAFFICHE di pacchetti per frame,
+# quelle che il ping "piccolo e lento" non fa vedere). latency: jitter buffer ampio.
 exec gst-launch-1.0 -v \
-  udpsrc port="${PORT}" caps="application/x-rtp,media=video,encoding-name=H264,payload=96" ! \
-  rtpjitterbuffer latency="${LATENCY:-200}" do-lost=true ! \
+  udpsrc port="${PORT}" buffer-size="${UDP_BUFFER:-4194304}" \
+         caps="application/x-rtp,media=video,encoding-name=H264,payload=96" ! \
+  rtpjitterbuffer latency="${LATENCY:-300}" do-lost=true ! \
   rtph264depay ! \
   h264parse ! \
   avdec_h264 ! \
