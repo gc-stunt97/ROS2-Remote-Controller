@@ -154,10 +154,16 @@ class JoypadGui:
         main = tk.Frame(self.root, bg=BG)
         main.pack(side=tk.TOP, padx=10, pady=6)
         self.widgets = {}
-        joys = tk.Frame(main, bg=BG)
-        joys.pack(side=tk.LEFT, anchor="n")
+
+        # Colonna sinistra: i due joystick + (sotto, nello spazio libero) il toggle SIM/REAL,
+        # cosi' il comando di sicurezza e' SEMPRE visibile anche su schermi bassi (800x480).
+        left = tk.Frame(main, bg=BG)
+        left.pack(side=tk.LEFT, anchor="n")
+        joys = tk.Frame(left, bg=BG)
+        joys.pack(side=tk.TOP)
         self._build_side(joys, "LEFT", "left", DOT_LEFT, tk.LEFT)
         self._build_side(joys, "RIGHT", "right", DOT_RIGHT, tk.LEFT)
+        self._build_simreal(left)
 
         panel = tk.Frame(main, bg=BG)
         panel.pack(side=tk.LEFT, anchor="n", padx=(16, 0))
@@ -265,10 +271,14 @@ class JoypadGui:
         self._slider(p, "duty", 0.3, 0.9, 0.5, "teleop", "duty", res=0.05)
         self._slider(p, "stance_up (mm)", -130, -60, -100, "teleop", "stance_up")
 
-        self._simreal = tk.Button(p, text="SIM  (servi spenti)", bg=SIM_COL, fg=INK,
-                                   font=("TkDefaultFont", 12, "bold"), relief=tk.FLAT,
-                                   command=self._toggle_simreal)
-        self._simreal.pack(anchor="w", fill=tk.X, pady=(8, 0))
+    def _build_simreal(self, parent):
+        """Toggle SIM/REAL (comando di sicurezza) — sotto i joystick, sempre visibile."""
+        f = tk.Frame(parent, bg=BG)
+        f.pack(side=tk.TOP, fill=tk.X, pady=(12, 0), padx=4)
+        self._simreal = tk.Button(f, text="SIM  —  servi spenti", bg=SIM_COL, fg=INK,
+                                   font=("TkDefaultFont", 14, "bold"), relief=tk.FLAT,
+                                   height=2, command=self._toggle_simreal)
+        self._simreal.pack(fill=tk.X)
 
     def _segmented(self, parent, label, options, default, on):
         row = tk.Frame(parent, bg=BG)
@@ -313,9 +323,9 @@ class JoypadGui:
         self._real = not self._real
         self._set_param("servo_node", "enabled", self._real)
         if self._real:
-            self._simreal.configure(text="REAL  (servi ATTIVI)", bg=REAL_COL)
+            self._simreal.configure(text="REAL  —  servi ATTIVI", bg=REAL_COL)
         else:
-            self._simreal.configure(text="SIM  (servi spenti)", bg=SIM_COL)
+            self._simreal.configure(text="SIM  —  servi spenti", bg=SIM_COL)
 
     def _my_ip(self):
         """IP di questo controller (per dire al robot dove mandare il video)."""
