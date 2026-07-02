@@ -21,6 +21,7 @@ Integrazione ROS+Tk: il ciclo lo guida Tkinter (mainloop); a ogni tick spin_once
 
 import os
 import signal
+import socket
 import subprocess
 import tkinter as tk
 from tkinter import messagebox
@@ -62,11 +63,14 @@ VIDEO_PORT = os.environ.get("ROBOTHEX_VIDEO_PORT", "5000")
 class ProcButton:
     """Bottone toggle che avvia/chiude un sottoprocesso (RViz, video)."""
 
-    def __init__(self, parent, name, cmd, check_path=None, on_color=SIM_COL):
+    def __init__(self, parent, name, cmd, check_path=None, on_color=SIM_COL,
+                 on_start=None, on_stop=None):
         self.name = name
         self.cmd = cmd
         self.check_path = check_path
         self.on_color = on_color
+        self.on_start = on_start   # azione extra all'avvio (es. accendi il sender sul robot)
+        self.on_stop = on_stop     # azione extra alla chiusura
         self.proc = None
         self.btn = tk.Button(parent, text=f"Avvia {name}", bg=BTN, fg=FG,
                              relief=tk.FLAT, width=12, command=self.toggle)
@@ -93,6 +97,8 @@ class ProcButton:
         except Exception as exc:                       # noqa: BLE001
             messagebox.showerror("Errore avvio", f"{self.name}: {exc}")
             self.proc = None
+        if self.proc is not None and self.on_start:
+            self.on_start()
         self.refresh()
 
     def stop(self):
@@ -102,6 +108,8 @@ class ProcButton:
             except (ProcessLookupError, PermissionError, OSError):
                 pass
             self.proc = None
+        if self.on_stop:
+            self.on_stop()
         self.refresh()
 
     def refresh(self):
@@ -134,6 +142,7 @@ class JoypadGui:
         self._param_clients = {
             "teleop": node.create_client(SetParameters, "/teleop/set_parameters"),
             "servo_node": node.create_client(SetParameters, "/servo_node/set_parameters"),
+            "camera_manager": node.create_client(SetParameters, "/camera_manager/set_parameters"),
         }
 
         self.root = tk.Tk()
@@ -225,7 +234,8 @@ class JoypadGui:
             ProcButton(wins, "RViz", ["ros2", "launch", RVIZ_LAUNCH, "gui:=false"],
                        check_path=RVIZ_LAUNCH).pack(side=tk.LEFT, padx=(0, 6)),
             ProcButton(wins, "Video", ["bash", VIDEO_SCRIPT, VIDEO_PORT],
-                       check_path=VIDEO_SCRIPT).pack(side=tk.LEFT),
+                       check_path=VIDEO_SCRIPT,
+                       on_start=self._video_on, on_stop=self._video_off).pack(side=tk.LEFT),
         ]
 
         tk.Label(p, text="CONTROLLO ROBOT", bg=BG, fg=FG,
@@ -306,6 +316,27 @@ class JoypadGui:
             self._simreal.configure(text="REAL  (servi ATTIVI)", bg=REAL_COL)
         else:
             self._simreal.configure(text="SIM  (servi spenti)", bg=SIM_COL)
+
+    def _my_ip(self):
+        """IP di questo controller (per dire al robot dove mandare il video)."""
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))   # non invia nulla: sceglie l'interfaccia di uscita
+            return s.getsockname()[0]
+        except OSError:
+            return None
+        finally:
+            s.close()
+
+    def _video_on(self):
+        """Avvio video: dico al camera_manager sul robot di partire, verso il MIO IP."""
+        ip = self._my_ip()
+        if ip:
+            self._set_param("camera_manager", "host", ip)
+        self._set_param("camera_manager", "enabled", True)
+
+    def _video_off(self):
+        self._set_param("camera_manager", "enabled", False)
 
     # --- callback ROS -----------------------------------------------------
     def _store(self, key, msg):
