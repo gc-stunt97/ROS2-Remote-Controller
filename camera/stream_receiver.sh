@@ -17,7 +17,7 @@
 set -euo pipefail
 
 PORT="${1:-${PORT:-5000}}"
-CODEC="${CODEC:-mjpeg}"
+CODEC="${CODEC:-h264}"
 export DISPLAY="${DISPLAY:-:0}"   # finestra sullo schermo fisico del controller
 
 echo "Ricevo ${CODEC} RTP su udp/${PORT} -> finestra sul 7\" (DISPLAY=${DISPLAY})"
