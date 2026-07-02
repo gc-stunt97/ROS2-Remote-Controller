@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """GUI dei joystick + PLANCIA di controllo robot — "plancia 2D".
 
-In alto: i due joystick come pad quadrati con pallino che segue X/Y, crosshair,
+A sinistra: i due joystick come pad quadrati con pallino che segue X/Y, crosshair,
 barra Z (yaw), valori numerici. Il pallino e' vuoto a riposo, pieno col tastino.
 
-In basso: sezione "CONTROLLO ROBOT" (touch-friendly), che sostituisce i comandi
-`ros2 param set` da terminale. Setta i parametri dei nodi sul ROBOT via il
-parameter service (WiFi/DDS):
+A destra la plancia:
+- "FINESTRE": bottoni toggle per avviare/chiudere RViz e il Video (sottoprocessi),
+  cosi' apri/chiudi ciascuno quando vuoi senza terminale.
+- "CONTROLLO ROBOT" (touch-friendly), che sostituisce i comandi `ros2 param set`.
+  Setta i parametri dei nodi sul ROBOT via il parameter service (WiFi/DDS):
   - Modalita' (Manuale/Gait)  -> /teleop  left_stick_mode
   - Pattern (tripod/ripple/wave) -> /teleop gait_pattern
   - Gamba (FL..RR, ALL)       -> /teleop  selected_leg
@@ -17,6 +19,9 @@ Sottoscrive: left/right_joystick_data (Point), left/right_button (Bool).
 Integrazione ROS+Tk: il ciclo lo guida Tkinter (mainloop); a ogni tick spin_once.
 """
 
+import os
+import signal
+import subprocess
 import tkinter as tk
 from tkinter import messagebox
 
@@ -45,6 +50,66 @@ SIM_COL = "#a6e3a1"    # verde (SIM)
 REAL_COL = "#f38ba8"   # rosso (REAL)
 
 LEG_NAMES = ["FL", "FR", "ML", "MR", "RL", "RR", "ALL"]
+
+# Percorsi delle finestre avviabili dalla plancia (override con variabili d'ambiente).
+RVIZ_LAUNCH = os.path.expanduser(
+    os.environ.get("ROBOTHEX_RVIZ_LAUNCH", "~/ros2_ws/viz/display.launch.py"))
+VIDEO_SCRIPT = os.path.expanduser(
+    os.environ.get("ROBOTHEX_VIDEO_RECEIVER", "~/ros2_ws/camera/stream_receiver.sh"))
+VIDEO_PORT = os.environ.get("ROBOTHEX_VIDEO_PORT", "5000")
+
+
+class ProcButton:
+    """Bottone toggle che avvia/chiude un sottoprocesso (RViz, video)."""
+
+    def __init__(self, parent, name, cmd, check_path=None, on_color=SIM_COL):
+        self.name = name
+        self.cmd = cmd
+        self.check_path = check_path
+        self.on_color = on_color
+        self.proc = None
+        self.btn = tk.Button(parent, text=f"Avvia {name}", bg=BTN, fg=FG,
+                             relief=tk.FLAT, width=12, command=self.toggle)
+
+    def pack(self, **kw):
+        self.btn.pack(**kw)
+        return self
+
+    def running(self):
+        return self.proc is not None and self.proc.poll() is None
+
+    def toggle(self):
+        self.stop() if self.running() else self.start()
+
+    def start(self):
+        if self.check_path and not os.path.exists(self.check_path):
+            messagebox.showerror("File mancante",
+                                 f"Non trovo:\n{self.check_path}\nHai fatto git pull?")
+            return
+        try:
+            self.proc = subprocess.Popen(
+                self.cmd, preexec_fn=os.setsid,
+                env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")})
+        except Exception as exc:                       # noqa: BLE001
+            messagebox.showerror("Errore avvio", f"{self.name}: {exc}")
+            self.proc = None
+        self.refresh()
+
+    def stop(self):
+        if self.proc is not None:
+            try:                                       # SIGINT al gruppo = chiusura pulita
+                os.killpg(os.getpgid(self.proc.pid), signal.SIGINT)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+            self.proc = None
+        self.refresh()
+
+    def refresh(self):
+        """Aggiorna l'aspetto (rileva anche la chiusura esterna della finestra)."""
+        if self.running():
+            self.btn.configure(text=f"Chiudi {self.name}", bg=self.on_color, fg=INK)
+        else:
+            self.btn.configure(text=f"Avvia {self.name}", bg=BTN, fg=FG)
 
 
 class JoypadGui:
@@ -88,6 +153,9 @@ class JoypadGui:
         panel = tk.Frame(main, bg=BG)
         panel.pack(side=tk.LEFT, anchor="n", padx=(16, 0))
         self._build_panel(panel)
+
+        # alla chiusura della plancia, chiudi anche RViz/Video eventualmente aperti
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # --- invio parametri ai nodi del robot --------------------------------
     @staticmethod
@@ -148,6 +216,17 @@ class JoypadGui:
     def _build_panel(self, parent):
         p = tk.Frame(parent, bg=BG)
         p.pack(side=tk.TOP, fill=tk.X, padx=20, pady=(2, 14))
+
+        tk.Label(p, text="FINESTRE", bg=BG, fg=FG,
+                 font=("TkDefaultFont", 12, "bold")).pack(anchor="w", pady=(0, 4))
+        wins = tk.Frame(p, bg=BG)
+        wins.pack(anchor="w", pady=(0, 10))
+        self._procs = [
+            ProcButton(wins, "RViz", ["ros2", "launch", RVIZ_LAUNCH, "gui:=false"],
+                       check_path=RVIZ_LAUNCH).pack(side=tk.LEFT, padx=(0, 6)),
+            ProcButton(wins, "Video", ["bash", VIDEO_SCRIPT, VIDEO_PORT],
+                       check_path=VIDEO_SCRIPT).pack(side=tk.LEFT),
+        ]
 
         tk.Label(p, text="CONTROLLO ROBOT", bg=BG, fg=FG,
                  font=("TkDefaultFont", 12, "bold")).pack(anchor="w", pady=(0, 6))
@@ -272,7 +351,14 @@ class JoypadGui:
             self._draw_pad(w["pad"], m.x, m.y, w["color"], self.buttons[key])
             self._draw_bar(w["bar"], m.z)
             w["val"].config(text=f"X:{m.x:+.2f}  Y:{m.y:+.2f}  Z:{m.z:+.2f}")
+        for pb in self._procs:      # aggiorna i bottoni RViz/Video (anche se chiusi a mano)
+            pb.refresh()
         self.root.after(REFRESH_MS, self._tick)
+
+    def _on_close(self):
+        for pb in getattr(self, "_procs", []):
+            pb.stop()
+        self.root.destroy()
 
     def run(self):
         self.root.after(0, self._tick)
