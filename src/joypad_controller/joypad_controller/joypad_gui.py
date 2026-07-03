@@ -300,7 +300,8 @@ class JoypadGui:
         """Modalita' (Manuale/Gait) e Pattern (tripod/ripple/wave) sotto il toggle SIM/REAL."""
         f = tk.Frame(parent, bg=BG)
         f.pack(side=tk.TOP, fill=tk.X, pady=(10, 0), padx=4)
-        self._segmented(f, "Modalita'", [("Manuale", "leg_manual"), ("Gait", "gait")],
+        self._segmented(f, "Modalita'",
+                        [("Manuale", "leg_manual"), ("Gait", "gait"), ("Corpo", "body")],
                         "leg_manual",
                         lambda v: self._set_param("teleop", "left_stick_mode", v))
         self._segmented(f, "Pattern",
