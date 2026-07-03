@@ -232,7 +232,7 @@ class JoypadGui:
     # --- costruzione UI: plancia di controllo -----------------------------
     def _build_panel(self, parent):
         p = tk.Frame(parent, bg=BG)
-        p.pack(side=tk.TOP, fill=tk.X, padx=20, pady=(2, 14))
+        p.pack(side=tk.TOP, fill=tk.X, padx=20, pady=(2, 4))
 
         # IP di questo controller (utile per SSH / diagnosi rete). Letto all'avvio: in DHCP
         # cambia di rado e leggerlo a ogni frame aprirebbe un socket 33 volte al secondo.
@@ -252,15 +252,15 @@ class JoypadGui:
                        on_start=self._video_on, on_stop=self._video_off).pack(side=tk.LEFT),
         ]
 
-        tk.Label(p, text="CONTROLLO ROBOT", bg=BG, fg=FG,
-                 font=("TkDefaultFont", 12, "bold")).pack(anchor="w", pady=(0, 6))
-
         # Gambe (modalita' Manuale): SPUNTE multiple -> se ne muovono piu' di una insieme.
         # Disposte come la vista dall'alto del robot (FL FR / ML MR / RL RR) per intuitivita'.
-        tk.Label(p, text="Gambe (Manuale):", bg=BG, fg=FG,
-                 anchor="w").pack(anchor="w", pady=(6, 2))
-        grid = tk.Frame(p, bg=BG)
-        grid.pack(anchor="w", pady=(0, 2))
+        # Griglia e bottoni Tutte/Nessuna AFFIANCATI per tenere bassa l'altezza (schermo 7").
+        tk.Label(p, text="CONTROLLO ROBOT — Gambe (Manuale):", bg=BG, fg=FG,
+                 font=("TkDefaultFont", 11, "bold")).pack(anchor="w", pady=(2, 2))
+        legbox = tk.Frame(p, bg=BG)
+        legbox.pack(anchor="w", pady=(0, 2))
+        grid = tk.Frame(legbox, bg=BG)
+        grid.pack(side=tk.LEFT)
         self._leg_vars = {}
         for r, rowlegs in enumerate([("FL", "FR"), ("ML", "MR"), ("RL", "RR")]):
             for c, leg in enumerate(rowlegs):
@@ -269,14 +269,14 @@ class JoypadGui:
                                     bg=BG, fg=FG, selectcolor=BTN, activebackground=BG,
                                     activeforeground=FG, width=4, anchor="w",
                                     highlightthickness=0)
-                cb.grid(row=r, column=c, padx=2, pady=1, sticky="w")
+                cb.grid(row=r, column=c, padx=2, pady=0, sticky="w")
                 self._leg_vars[leg] = var
-        qrow = tk.Frame(p, bg=BG)
-        qrow.pack(anchor="w", pady=(0, 4))
-        tk.Button(qrow, text="Tutte", bg=BTN, fg=FG, relief=tk.FLAT, width=6,
-                  command=lambda: self._set_all_legs(True)).pack(side=tk.LEFT, padx=2)
-        tk.Button(qrow, text="Nessuna", bg=BTN, fg=FG, relief=tk.FLAT, width=7,
-                  command=lambda: self._set_all_legs(False)).pack(side=tk.LEFT, padx=2)
+        qcol = tk.Frame(legbox, bg=BG)
+        qcol.pack(side=tk.LEFT, padx=(12, 0))
+        tk.Button(qcol, text="Tutte", bg=BTN, fg=FG, relief=tk.FLAT, width=7,
+                  command=lambda: self._set_all_legs(True)).pack(fill=tk.X, pady=1)
+        tk.Button(qcol, text="Nessuna", bg=BTN, fg=FG, relief=tk.FLAT, width=7,
+                  command=lambda: self._set_all_legs(False)).pack(fill=tk.X, pady=1)
 
         self._slider(p, "stride (mm)", 0, 100, 60, "teleop", "stride")
         self._slider(p, "period (s)", 0.5, 4.0, 2.0, "teleop", "period", res=0.1)
@@ -332,7 +332,7 @@ class JoypadGui:
 
     def _slider(self, parent, label, lo, hi, default, target, name, res=1.0):
         row = tk.Frame(parent, bg=BG)
-        row.pack(anchor="w", pady=2, fill=tk.X)
+        row.pack(anchor="w", pady=0, fill=tk.X)
         tk.Label(row, text=label, bg=BG, fg=FG, width=14, anchor="w").pack(side=tk.LEFT)
         s = tk.Scale(row, from_=lo, to=hi, resolution=res, orient=tk.HORIZONTAL,
                      bg=BG, fg=FG, troughcolor=GRID, highlightthickness=0,
