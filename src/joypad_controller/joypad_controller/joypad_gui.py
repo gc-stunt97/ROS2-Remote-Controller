@@ -265,7 +265,7 @@ class JoypadGui:
         self._leg_vars = {}
         for r, rowlegs in enumerate([("FL", "FR"), ("ML", "MR"), ("RL", "RR")]):
             for c, leg in enumerate(rowlegs):
-                var = tk.BooleanVar(value=(leg == "FL"))   # FL spuntata all'avvio (default)
+                var = tk.BooleanVar(value=False)   # nessuna gamba spuntata all'avvio
                 cb = tk.Checkbutton(grid, text=leg, variable=var, command=self._on_legs,
                                     bg=BG, fg=FG, selectcolor=BTN, activebackground=BG,
                                     activeforeground=FG, width=4, anchor="w",
