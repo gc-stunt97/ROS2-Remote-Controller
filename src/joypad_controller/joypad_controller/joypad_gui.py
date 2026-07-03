@@ -278,7 +278,7 @@ class JoypadGui:
         tk.Button(qcol, text="Nessuna", bg=BTN, fg=FG, relief=tk.FLAT, width=7,
                   command=lambda: self._set_all_legs(False)).pack(fill=tk.X, pady=1)
 
-        self._slider(p, "stride (mm)", 0, 100, 60, "teleop", "stride")
+        self._slider(p, "stride (mm)", 0, 120, 60, "teleop", "stride")
         self._slider(p, "period (s)", 0.5, 4.0, 2.0, "teleop", "period", res=0.1)
         self._slider(p, "duty", 0.3, 0.9, 0.5, "teleop", "duty", res=0.05)
         # stance_up: corpo piu' alto = piu' negativo. Limite fisico -140 (gamba L=140 mm:
