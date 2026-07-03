@@ -252,6 +252,12 @@ class JoypadGui:
                        check_path=VIDEO_SCRIPT,
                        on_start=self._video_on, on_stop=self._video_off).pack(side=tk.LEFT),
         ]
+        # Toggle "plancia sempre in primo piano": se RViz va fullscreen la plancia resta
+        # raggiungibile -> "Chiudi RViz" senza tastiera. ON=blu.
+        self._topmost = False
+        self._topmost_btn = tk.Button(wins, text="Sopra", bg=BTN, fg=FG, relief=tk.FLAT,
+                                      width=7, command=self._toggle_topmost)
+        self._topmost_btn.pack(side=tk.LEFT, padx=(6, 0))
 
         # Gambe (modalita' Manuale): SPUNTE multiple -> se ne muovono piu' di una insieme.
         # Disposte come la vista dall'alto del robot (FL FR / ML MR / RL RR) per intuitivita'.
@@ -369,6 +375,13 @@ class JoypadGui:
             target, name, conv(float(v)) if conv else float(v)))
         s.pack(side=tk.LEFT)
         return s
+
+    def _toggle_topmost(self):
+        """Tiene la plancia sempre in primo piano (utile se RViz va fullscreen)."""
+        self._topmost = not self._topmost
+        self.root.attributes("-topmost", self._topmost)
+        self._topmost_btn.configure(bg=SEL if self._topmost else BTN,
+                                    fg=INK if self._topmost else FG)
 
     def _on_mode(self, v):
         """Cambio Modalita': invia il parametro e mostra gli slider di quella modalita'."""
