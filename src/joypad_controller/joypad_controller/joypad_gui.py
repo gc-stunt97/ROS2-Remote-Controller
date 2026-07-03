@@ -19,6 +19,7 @@ Sottoscrive: left/right_joystick_data (Point), left/right_button (Bool).
 Integrazione ROS+Tk: il ciclo lo guida Tkinter (mainloop); a ogni tick spin_once.
 """
 
+import math
 import os
 import signal
 import socket
@@ -278,12 +279,36 @@ class JoypadGui:
         tk.Button(qcol, text="Nessuna", bg=BTN, fg=FG, relief=tk.FLAT, width=7,
                   command=lambda: self._set_all_legs(False)).pack(fill=tk.X, pady=1)
 
-        self._slider(p, "stride (mm)", 0, 120, 60, "teleop", "stride")
-        self._slider(p, "period (s)", 0.5, 4.0, 2.0, "teleop", "period", res=0.1)
-        self._slider(p, "duty", 0.3, 0.9, 0.5, "teleop", "duty", res=0.05)
-        # stance_up: corpo piu' alto = piu' negativo. Limite fisico -140 (gamba L=140 mm:
-        # oltre, l'IK va fuori portata e la zampa non risponde). Vedi nota nel messaggio.
+        # stance_up: comune a TUTTE le modalita' (altezza corpo = punto di partenza di
+        # manuale/gait/corpo). Corpo piu' alto = piu' negativo. Limite fisico -140 (gamba
+        # L=140 mm: oltre, l'IK va fuori portata e la zampa non risponde).
         self._slider(p, "stance_up (mm)", -140, -60, -100, "teleop", "stance_up")
+
+        # --- slider CONTESTUALI: compare solo il gruppo della Modalita' attiva (spazio 7") ---
+        self._mode_frames = {}
+        fg = tk.Frame(p, bg=BG)
+        self._mode_frames["gait"] = fg
+        self._slider(fg, "stride (mm)", 0, 120, 60, "teleop", "stride")
+        self._slider(fg, "period (s)", 0.5, 4.0, 2.0, "teleop", "period", res=0.1)
+        self._slider(fg, "duty", 0.3, 0.9, 0.5, "teleop", "duty", res=0.05)
+
+        fm = tk.Frame(p, bg=BG)
+        self._mode_frames["leg_manual"] = fm
+        self._slider(fm, "swing sens (°)", 10, 80, 80, "teleop", "swing_range",
+                     res=5, conv=math.radians)
+        self._slider(fm, "lift sens (°)", 10, 80, 80, "teleop", "lift_range",
+                     res=5, conv=math.radians)
+
+        fb = tk.Frame(p, bg=BG)
+        self._mode_frames["body"] = fb
+        self._slider(fb, "roll (°)", 0, 25, 11, "teleop", "body_roll_range",
+                     res=1, conv=math.radians)
+        self._slider(fb, "pitch (°)", 0, 25, 11, "teleop", "body_pitch_range",
+                     res=1, conv=math.radians)
+        self._slider(fb, "yaw (°)", 0, 35, 17, "teleop", "body_yaw_range",
+                     res=1, conv=math.radians)
+
+        self._show_mode_sliders("leg_manual")   # vista iniziale = default Modalita'
 
     def _build_simreal(self, parent):
         """Toggle SIM/REAL (comando di sicurezza) — sotto i joystick, sempre visibile."""
@@ -302,8 +327,7 @@ class JoypadGui:
         f.pack(side=tk.TOP, fill=tk.X, pady=(10, 0), padx=4)
         self._segmented(f, "Modalita'",
                         [("Manuale", "leg_manual"), ("Gait", "gait"), ("Corpo", "body")],
-                        "leg_manual",
-                        lambda v: self._set_param("teleop", "left_stick_mode", v))
+                        "leg_manual", self._on_mode)
         self._segmented(f, "Pattern",
                         [("tripod", "tripod"), ("ripple", "ripple"), ("wave", "wave")],
                         "ripple",
@@ -331,7 +355,9 @@ class JoypadGui:
         highlight(default)    # solo evidenza all'avvio, senza sparare il parametro
         return btns
 
-    def _slider(self, parent, label, lo, hi, default, target, name, res=1.0):
+    def _slider(self, parent, label, lo, hi, default, target, name, res=1.0, conv=None):
+        # conv: trasforma il valore dello slider nel valore del parametro (es. math.radians
+        # per mostrare gradi ma inviare radianti). Default: identita'.
         row = tk.Frame(parent, bg=BG)
         row.pack(anchor="w", pady=0, fill=tk.X)
         tk.Label(row, text=label, bg=BG, fg=FG, width=14, anchor="w").pack(side=tk.LEFT)
@@ -339,9 +365,23 @@ class JoypadGui:
                      bg=BG, fg=FG, troughcolor=GRID, highlightthickness=0,
                      length=200, sliderrelief=tk.FLAT)
         s.set(default)        # imposta prima di cablare il command -> niente invio all'avvio
-        s.configure(command=lambda v: self._set_param(target, name, float(v)))
+        s.configure(command=lambda v: self._set_param(
+            target, name, conv(float(v)) if conv else float(v)))
         s.pack(side=tk.LEFT)
         return s
+
+    def _on_mode(self, v):
+        """Cambio Modalita': invia il parametro e mostra gli slider di quella modalita'."""
+        self._set_param("teleop", "left_stick_mode", v)
+        self._show_mode_sliders(v)
+
+    def _show_mode_sliders(self, mode):
+        """Mostra solo il gruppo di slider della modalita' attiva (gli altri li nasconde)."""
+        for m, fr in self._mode_frames.items():
+            if m == mode:
+                fr.pack(anchor="w", fill=tk.X)
+            else:
+                fr.pack_forget()
 
     def _on_legs(self):
         """Spunte gambe -> parametro selected_leg del teleop (CSV, o 'ALL' se tutte)."""
