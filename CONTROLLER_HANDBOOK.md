@@ -48,6 +48,17 @@ pubblica su topic ROS2, e il robot (subscriber sulla stessa rete) li usa per muo
 - **STM32 "Blue Pill"** (STM32F103C8): legge i 6 assi analogici + i pulsanti e manda i
   valori al Pi via **seriale USB** (`/dev/ttyACM0`).
 
+### Alimentazione
+- Oggi: **powerbank ~10000 mAh** via **USB 5 V** → alimenta Pi 4 + display 7" + STM32 +
+  joystick. La **USB-C** della powerbank è riservata a **ricarica / pass-through** (si può
+  tenere in carica mentre si usa), quindi non la si usa per alimentare altro.
+- **Autonomia** stimata ~2 h col solo controller (di meno col RUT241 attivo).
+- **Roadmap — link dedicato (RUT241 Teltonika):** router industriale (RutOS/OpenWrt, WiFi
+  2.4 GHz + LTE) da integrare nel controller come **hub di rete privata** robot↔controller.
+  Architettura prevista: **Pi controller cablato in Ethernet** al RUT241 (WiFi dedicata al
+  solo robot), 4G come **backhaul** opzionale. Alimentazione RUT241 (vuole ~9–50 V, non 5 V):
+  **boost DC-DC 5 V → 12 V** dalla powerbank. Sta **dopo il brownout** nelle priorità.
+
 ---
 
 ## 3. Architettura software
