@@ -235,11 +235,19 @@ class JoypadGui:
         p = tk.Frame(parent, bg=BG)
         p.pack(side=tk.TOP, fill=tk.X, padx=20, pady=(2, 4))
 
-        # IP di questo controller (utile per SSH / diagnosi rete). Letto all'avvio: in DHCP
-        # cambia di rado e leggerlo a ogni frame aprirebbe un socket 33 volte al secondo.
-        self._ip_lbl = tk.Label(p, text=f"IP controller: {self._my_ip() or '?'}",
+        # Riga in alto: IP del controller (SSH/diagnosi rete) + toggle "Sopra".
+        # IP letto all'avvio (in DHCP cambia di rado; leggerlo a ogni frame aprirebbe un socket
+        # 33 volte al secondo). Toggle "Sopra" = plancia sempre in primo piano: se RViz va
+        # fullscreen la plancia resta raggiungibile -> "Chiudi RViz" senza tastiera (ON=blu).
+        toprow = tk.Frame(p, bg=BG)
+        toprow.pack(anchor="w", fill=tk.X, pady=(0, 6))
+        self._ip_lbl = tk.Label(toprow, text=f"IP controller: {self._my_ip() or '?'}",
                                  bg=BG, fg=GRID, font=("TkFixedFont", 9))
-        self._ip_lbl.pack(anchor="w", pady=(0, 6))
+        self._ip_lbl.pack(side=tk.LEFT)
+        self._topmost = False
+        self._topmost_btn = tk.Button(toprow, text="Sopra", bg=BTN, fg=FG, relief=tk.FLAT,
+                                      width=7, command=self._toggle_topmost)
+        self._topmost_btn.pack(side=tk.LEFT, padx=(12, 0))
 
         tk.Label(p, text="FINESTRE", bg=BG, fg=FG,
                  font=("TkDefaultFont", 12, "bold")).pack(anchor="w", pady=(0, 4))
@@ -252,12 +260,6 @@ class JoypadGui:
                        check_path=VIDEO_SCRIPT,
                        on_start=self._video_on, on_stop=self._video_off).pack(side=tk.LEFT),
         ]
-        # Toggle "plancia sempre in primo piano": se RViz va fullscreen la plancia resta
-        # raggiungibile -> "Chiudi RViz" senza tastiera. ON=blu.
-        self._topmost = False
-        self._topmost_btn = tk.Button(wins, text="Sopra", bg=BTN, fg=FG, relief=tk.FLAT,
-                                      width=7, command=self._toggle_topmost)
-        self._topmost_btn.pack(side=tk.LEFT, padx=(6, 0))
 
         # Gambe (modalita' Manuale): SPUNTE multiple -> se ne muovono piu' di una insieme.
         # Disposte come la vista dall'alto del robot (FL FR / ML MR / RL RR) per intuitivita'.
