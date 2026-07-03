@@ -300,9 +300,9 @@ class JoypadGui:
 
         fm = tk.Frame(p, bg=BG)
         self._mode_frames["leg_manual"] = fm
-        self._slider(fm, "swing sens (°)", 10, 80, 80, "teleop", "swing_range",
+        self._slider(fm, "swing sens (°)", 10, 90, 90, "teleop", "swing_range",
                      res=5, conv=math.radians)
-        self._slider(fm, "lift sens (°)", 10, 80, 80, "teleop", "lift_range",
+        self._slider(fm, "lift sens (°)", 10, 90, 90, "teleop", "lift_range",
                      res=5, conv=math.radians)
 
         fb = tk.Frame(p, bg=BG)
