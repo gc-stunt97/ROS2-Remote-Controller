@@ -10,7 +10,7 @@ A destra la plancia:
 - "CONTROLLO ROBOT" (touch-friendly), che sostituisce i comandi `ros2 param set`.
   Setta i parametri dei nodi sul ROBOT via il parameter service (WiFi/DDS):
   - Modalita' (Manuale/Gait)  -> /teleop  left_stick_mode
-  - Pattern (tripod/ripple/wave) -> /teleop gait_pattern
+  - Pattern (tripod/ripple/wave/genghis) -> /teleop gait_pattern
   - Gamba (FL..RR, ALL)       -> /teleop  selected_leg
   - Slider stride/period/duty/stance_up -> /teleop
   - Toggle SIM <-> REAL       -> /servo_node enabled  (con conferma prima del REAL)
@@ -164,7 +164,7 @@ class JoypadGui:
         self._build_side(joys, "RIGHT", "right", DOT_RIGHT, tk.LEFT)
         self._build_simreal(left)
         # Modalita' e Pattern stanno QUI (colonna sinistra, larga come i due joystick):
-        # cosi' i 3 bottoni del Pattern (tripod/ripple/wave) ci stanno tutti senza uscire
+        # cosi' i 4 bottoni del Pattern (tripod/ripple/wave/genghis) ci stanno tutti senza uscire
         # dallo schermo, cosa che succedeva nel pannello destro (piu' stretto).
         self._build_modepattern(left)
 
@@ -330,18 +330,20 @@ class JoypadGui:
         self._simreal.pack(fill=tk.X)
 
     def _build_modepattern(self, parent):
-        """Modalita' (Manuale/Gait) e Pattern (tripod/ripple/wave) sotto il toggle SIM/REAL."""
+        """Modalita' (Manuale/Gait) e Pattern (tripod/ripple/wave/genghis) sotto il toggle SIM/REAL."""
         f = tk.Frame(parent, bg=BG)
         f.pack(side=tk.TOP, fill=tk.X, pady=(10, 0), padx=4)
         self._segmented(f, "Modalita'",
                         [("Manuale", "leg_manual"), ("Gait", "gait"), ("Corpo", "body")],
                         "leg_manual", self._on_mode)
         self._segmented(f, "Pattern",
-                        [("tripod", "tripod"), ("ripple", "ripple"), ("wave", "wave")],
+                        [("tripod", "tripod"), ("ripple", "ripple"),
+                         ("wave", "wave"), ("genghis", "genghis")],
                         "ripple",
-                        lambda v: self._set_param("teleop", "gait_pattern", v))
+                        lambda v: self._set_param("teleop", "gait_pattern", v),
+                        btn_width=6)   # 4 pattern: bottoni piu' stretti per stare nel 7"
 
-    def _segmented(self, parent, label, options, default, on):
+    def _segmented(self, parent, label, options, default, on, btn_width=8):
         row = tk.Frame(parent, bg=BG)
         row.pack(anchor="w", pady=3)
         tk.Label(row, text=label + ":", bg=BG, fg=FG, width=10, anchor="w").pack(side=tk.LEFT)
@@ -356,7 +358,7 @@ class JoypadGui:
             on(val)
 
         for text, val in options:
-            b = tk.Button(row, text=text, bg=BTN, fg=FG, width=8, relief=tk.FLAT,
+            b = tk.Button(row, text=text, bg=BTN, fg=FG, width=btn_width, relief=tk.FLAT,
                           command=lambda v=val: select(v))
             b.pack(side=tk.LEFT, padx=2)
             btns[val] = b
