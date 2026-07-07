@@ -297,8 +297,12 @@ class JoypadGui:
         fg = tk.Frame(p, bg=BG)
         self._mode_frames["gait"] = fg
         self._slider(fg, "stride (mm)", 0, 120, 60, "teleop", "stride")
-        self._slider(fg, "period (s)", 0.5, 4.0, 2.0, "teleop", "period", res=0.1)
+        self._slider(fg, "period (s)", 0.5, 4.0, 2.0, "teleop", "period", res=0.1)  # = velocita': piu' basso = piu' veloce
         self._slider(fg, "duty", 0.3, 0.9, 0.5, "teleop", "duty", res=0.05)
+        self._slider(fg, "arco (mm)", 10, 90, 45, "teleop", "swing_lift")  # sollevamento piede in volo
+        # Modalita' silenziosa: ammorbidisce l'atterraggio (piede giu' senza sbattere),
+        # dosata in automatico sulla velocita' di marcia lato robot. ON = blu.
+        self._toggle_param(fg, "Silenzioso", "teleop", "silence_mode")
 
         fm = tk.Frame(p, bg=BG)
         self._mode_frames["leg_manual"] = fm
@@ -379,6 +383,30 @@ class JoypadGui:
             target, name, conv(float(v)) if conv else float(v)))
         s.pack(side=tk.LEFT)
         return s
+
+    def _toggle_param(self, parent, label, target, name, default=False):
+        """Bottone toggle per un parametro BOOL di un nodo del robot (ON=blu, OFF=grigio).
+        Non spara il parametro all'avvio: parte allineato al default del nodo."""
+        row = tk.Frame(parent, bg=BG)
+        row.pack(anchor="w", pady=(4, 0), fill=tk.X)
+        state = {"on": default}
+        btn = tk.Button(row, width=16, relief=tk.FLAT)
+
+        def render():
+            if state["on"]:
+                btn.configure(text=f"{label}: ON", bg=SEL, fg=INK)
+            else:
+                btn.configure(text=f"{label}: OFF", bg=BTN, fg=FG)
+
+        def toggle():
+            state["on"] = not state["on"]
+            self._set_param(target, name, state["on"])
+            render()
+
+        btn.configure(command=toggle)
+        btn.pack(side=tk.LEFT)
+        render()        # solo aspetto: nessun invio finche' non lo tocchi
+        return btn
 
     def _toggle_topmost(self):
         """Tiene la plancia sempre in primo piano (utile se RViz va fullscreen)."""
