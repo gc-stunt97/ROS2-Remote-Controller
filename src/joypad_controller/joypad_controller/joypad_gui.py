@@ -300,9 +300,6 @@ class JoypadGui:
         self._slider(fg, "period (s)", 0.5, 4.0, 2.0, "teleop", "period", res=0.1)  # = velocita': piu' basso = piu' veloce
         self._slider(fg, "duty", 0.3, 0.9, 0.5, "teleop", "duty", res=0.05)
         self._slider(fg, "arco (mm)", 10, 90, 45, "teleop", "swing_lift")  # sollevamento piede in volo
-        # Modalita' silenziosa: ammorbidisce l'atterraggio (piede giu' senza sbattere),
-        # dosata in automatico sulla velocita' di marcia lato robot. ON = blu.
-        self._toggle_param(fg, "Silenzioso", "teleop", "silence_mode")
 
         fm = tk.Frame(p, bg=BG)
         self._mode_frames["leg_manual"] = fm
@@ -346,6 +343,10 @@ class JoypadGui:
                         "ripple",
                         lambda v: self._set_param("teleop", "gait_pattern", v),
                         btn_width=6)   # 4 pattern: bottoni piu' stretti per stare nel 7"
+        # Modalita' silenziosa (opzione del gait): ammorbidisce l'atterraggio del piede,
+        # dosata in automatico sulla velocita' di marcia lato robot. Qui = SEMPRE visibile
+        # (come i Pattern), non sepolta negli slider contestuali della colonna destra. ON = blu.
+        self._toggle_param(f, "Silenzioso", "teleop", "silence_mode")
 
     def _segmented(self, parent, label, options, default, on, btn_width=8):
         row = tk.Frame(parent, bg=BG)
