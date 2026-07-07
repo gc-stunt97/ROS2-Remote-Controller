@@ -343,10 +343,12 @@ class JoypadGui:
                         "ripple",
                         lambda v: self._set_param("teleop", "gait_pattern", v),
                         btn_width=6)   # 4 pattern: bottoni piu' stretti per stare nel 7"
-        # Modalita' silenziosa (opzione del gait): ammorbidisce l'atterraggio del piede,
-        # dosata in automatico sulla velocita' di marcia lato robot. Qui = SEMPRE visibile
-        # (come i Pattern), non sepolta negli slider contestuali della colonna destra. ON = blu.
+        # Modalita' silenziosa (opzione del gait): ammorbidisce l'atterraggio del piede.
+        # Qui = SEMPRE visibile (come i Pattern), non sepolta negli slider contestuali della
+        # colonna destra. ON = blu. Sotto, lo slider forma il "flare": piu' alto = il piede
+        # frena da piu' su e tocca terra piu' dolce.
         self._toggle_param(f, "Silenzioso", "teleop", "silence_mode")
+        self._slider(f, "atterraggio", 2.0, 5.0, 3.0, "teleop", "land_power", res=0.5)
 
     def _segmented(self, parent, label, options, default, on, btn_width=8):
         row = tk.Frame(parent, bg=BG)
