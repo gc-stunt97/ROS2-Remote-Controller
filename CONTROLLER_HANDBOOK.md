@@ -196,3 +196,24 @@ serve quando cambiano `setup.py`/`package.xml`/launch/dipendenze.
    traduce in **parametri del gait engine** del robot (vedi `ROBOTHEX_HANDBOOK.md`).
 3. **Rete:** far parlare controller e robot via WiFi (stesso `ROS_DOMAIN_ID`, DDS discovery).
 4. (Poi) streaming video FPV su pipeline dedicata — vedi handbook robot sez. 6b.
+
+---
+
+## 10. Uso con AIRA (base mobile) — pacchetto `aira_dashboard`
+
+Il controller è **condiviso**: lo stesso hardware (STM32 + joystick) pilota sia RobotHex sia
+la base mobile **AIRA** (repo `gc-stunt97/AIRA_Robot`). Cambia solo la GUI che gli metti sopra.
+
+- **`src/aira_dashboard/`** — dashboard dedicata alla base mobile (gemella di `joypad_gui.py`).
+  Riusa il nodo joystick `joypad_controller/joypad_node`. Mostra: telemetria ODrive (da
+  `/odrive_status`), velocità comandata (`/cmd_vel`) vs reale (`/odom`), mini-mappa odom,
+  e un toggle di sicurezza **MOTORI ON/OFF** (chiama `/odrive_node/enable_motors`, con conferma).
+  La base si guida con lo **stick SINISTRO** (y=avanti, x=sterzo).
+- **`viz/aira/`** — RViz per AIRA sul controller: `aira_base.urdf` (copia piatta generata
+  dallo xacro del repo AIRA), `display.launch.py`, `aira_base.rviz` (fixed frame `odom`,
+  mostra modello + odometria + `/scan` quando ci sarà il LiDAR).
+- **Avvio:** `ros2 launch aira_dashboard aira.launch.py` (joystick + dashboard). Serve
+  `python3-tk`. Icona desktop dedicata: `desktop/AIRA-Controller.desktop` +
+  `desktop/aira-controller.sh` (installazione come per RobotHex, vedi `desktop/README.md`).
+- **Rete:** stesso `ROS_DOMAIN_ID` del robot AIRA (come per RobotHex).
+- **Build:** `colcon build --symlink-install --packages-select aira_dashboard` in `~/ros2_ws`.

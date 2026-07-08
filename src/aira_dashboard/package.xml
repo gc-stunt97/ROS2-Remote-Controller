@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>aira_dashboard</name>
+  <version>0.0.1</version>
+  <description>Dashboard di guida della base mobile AIRA sul controller (telemetria ODrive,
+    velocita' comandata vs reale, mini-mappa odom, toggle motori). Gemella della plancia
+    RobotHex; usa lo stesso telecomando (joypad_controller).</description>
+  <maintainer email="e.mancinelli@brunelleschi.ai">giulio</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>joypad_controller</exec_depend>
+  <!-- la GUI usa python3-tk (tkinter): installare `sudo apt install python3-tk` sul controller -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

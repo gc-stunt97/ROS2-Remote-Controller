@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AIRA Controller
+Comment=Avvia joystick + dashboard della base mobile AIRA
+Exec=/home/giulio/aira-controller.sh
+Icon=input-gaming
+Terminal=false
+Categories=Utility;
