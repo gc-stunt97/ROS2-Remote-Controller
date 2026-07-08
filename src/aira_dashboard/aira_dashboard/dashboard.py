@@ -72,6 +72,8 @@ DIAG_LEVEL_COLOR = {
     DiagnosticStatus.STALE: OFF_COL,
 }
 
+AXIS_STATE_CLOSED_LOOP = 8   # enum ODrive: asse in coppia (closed-loop control)
+
 
 class ProcButton:
     """Bottone toggle che avvia/chiude un sottoprocesso (es. RViz). Come nella plancia."""
@@ -133,7 +135,7 @@ class AiraDashboard:
         self.cmd = Twist()
         self.odom = Odometry()
         self.status = {}          # name -> DiagnosticStatus (ultimo /odrive_status)
-        self._enabled = False     # stato locale del toggle MOTORI (parte a OFF per sicurezza)
+        self._motors_on = False   # stato REALE dei motori, dedotto dalla telemetria
         self._trail = deque(maxlen=400)   # scia (x, y) per la mini-mappa
 
         node.create_subscription(Point, "left_joystick_data",
@@ -276,7 +278,7 @@ class AiraDashboard:
 
     # --- azioni -----------------------------------------------------------
     def _toggle_motors(self):
-        target = not self._enabled
+        target = not self._motors_on   # inverti lo stato REALE letto dalla telemetria
         if target:   # sto per ATTIVARE i motori -> conferma di sicurezza
             if not messagebox.askyesno(
                     "Attiva motori",
@@ -291,15 +293,15 @@ class AiraDashboard:
             return
         req = SetBool.Request()
         req.data = target
-        self._enable_cli.call_async(req)   # fire-and-forget: la risposta la smaltisce spin_once
-        self._enabled = target
-        self._render_motor_btn()
+        self._enable_cli.call_async(req)   # fire-and-forget; il vero stato lo conferma la telemetria
 
-    def _render_motor_btn(self):
-        if self._enabled:
+    def _render_motor_btn(self, online):
+        if not online:
+            self._motor_btn.configure(text="MOTORI  —  offline", bg=OFF_COL)
+        elif self._motors_on:
             self._motor_btn.configure(text="MOTORI  —  ATTIVI", bg=OK_COL)
         else:
-            self._motor_btn.configure(text="MOTORI  —  SPENTI", bg=OFF_COL)
+            self._motor_btn.configure(text="MOTORI  —  SPENTI", bg=WARN_COL)
 
     def _toggle_topmost(self):
         self._topmost = not self._topmost
@@ -420,6 +422,7 @@ class AiraDashboard:
             self._vbus_lbl.config(
                 text=f"Vbus: {kv.get('vbus_voltage', '--')} V   "
                      f"ibus: {kv.get('ibus', '--')} A")
+        states = []
         for axis, (dot, oval, lbl) in self._axis_lbls.items():
             st = self.status.get(axis)
             if st is None:
@@ -432,6 +435,15 @@ class AiraDashboard:
             lbl.config(text=f"{axis[5:]:5} st:{kv.get('state','?'):>2}  "
                             f"I:{kv.get('current_A','--'):>5}A  "
                             f"T:{kv.get('fet_temp_C','--')}°  {st.message}")
+            try:
+                states.append(int(kv.get("state", -1)))
+            except ValueError:
+                states.append(-1)
+
+        # stato REALE motori: online se la board risponde; ON se ENTRAMBI gli assi in closed-loop
+        online = board is not None
+        self._motors_on = len(states) == 2 and all(s == AXIS_STATE_CLOSED_LOOP for s in states)
+        self._render_motor_btn(online)
 
     # --- ciclo principale -------------------------------------------------
     def _tick(self):
