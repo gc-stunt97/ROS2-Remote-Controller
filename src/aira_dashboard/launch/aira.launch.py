@@ -20,6 +20,8 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    # Porta seriale: default all'alias udev stabile /dev/aira_controller.
+    # Override:  ros2 launch aira_dashboard aira.launch.py serial_port:=/dev/ttyACM0
     serial_port = LaunchConfiguration("serial_port")
 
     joystick_node = Node(
@@ -43,8 +45,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        DeclareLaunchArgument("serial_port", default_value="/dev/ttyACM0",
-                              description="seriale dello STM32 (joystick)"),
+        DeclareLaunchArgument("serial_port", default_value="/dev/aira_controller",
+                              description="seriale dello STM32 (alias udev o /dev/ttyACM*)"),
         joystick_node,
         dashboard_node,
         stop_on_close,
