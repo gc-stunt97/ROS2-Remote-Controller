@@ -169,7 +169,7 @@ ros2 topic pub /right_joystick_data geometry_msgs/msg/Point "{x: 0.0, y: 1.0, z:
 - **Sorgente:** `firmware/stm32/ROS2controller/ROS2controller.ino` (Arduino/STM32duino,
   libreria **ArduinoJson**). Dettagli protocollo + tabella pin completa: `firmware/stm32/README.md`.
 - **Pinout (2026-07):** assi `LY=PA1, LX=PA0, LZ=PA2` / `RY=PA5, RX=PA3, RZ=PA4`;
-  pulsanti `BL=PB15, BR=PB10, EM=PB14, B1=PB11, B2=PB12, B3=PB13` (tutti `INPUT_PULLUP`,
+  pulsanti `BL=PB10, BR=PB15, EM=PB14, B1=PB11, B2=PB12, B3=PB13` (tutti `INPUT_PULLUP`,
   NO→massa, debounce 30 ms, `1=premuto`); LED vita `PC13`.
 - **Contratto JSON:** `{"LY","LZ","LX","RY","RZ","RX","BL","BR","EM","B1","B2","B3"}` @ 57600 baud, ~50 Hz.
 

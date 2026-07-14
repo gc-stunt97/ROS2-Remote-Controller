@@ -22,8 +22,10 @@ float RZ;
 // Indici del vettore buttons[]: usati per pin, debounce e chiavi JSON.
 const int BTN_COUNT = 6;
 enum { B_BL = 0, B_BR, B_EM, B_B1, B_B2, B_B3 };
+// Cablaggio verificato sul telecomando il 2026-07-14: il tastino SINISTRO e' su PB10 e
+// il DESTRO su PB15 (l'opposto di quanto assumeva questa tabella prima).
 // pin:            BL(L stick)  BR(R stick)  EM stop   Button1  Button2  Button3
-const int   btnPin[BTN_COUNT] = { PB15,      PB10,      PB14,    PB11,    PB12,   PB13 };
+const int   btnPin[BTN_COUNT] = { PB10,      PB15,      PB14,    PB11,    PB12,   PB13 };
 const char* btnKey[BTN_COUNT] = { "BL",      "BR",      "EM",    "B1",    "B2",   "B3" };
 
 // Stato per il debounce

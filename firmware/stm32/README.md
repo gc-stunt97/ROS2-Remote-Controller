@@ -19,8 +19,8 @@ Le etichette firmware sono ora coerenti col cablaggio fisico.
 |---------|------|------|
 | LY / LX / LZ (joystick sinistro) | PA1 / PA0 / PA2 | ADC — Y=avanti, X=laterale, Z=yaw |
 | RY / RX / RZ (joystick destro)   | PA5 / PA3 / PA4 | ADC — Y=avanti, X=laterale, Z=yaw |
-| Tastino stick sinistro `BL`      | PB15 | INPUT_PULLUP, NO→massa, debounce 30 ms |
-| Tastino stick destro `BR`        | PB10 | INPUT_PULLUP, NO→massa, debounce 30 ms |
+| Tastino stick sinistro `BL`      | PB10 | INPUT_PULLUP, NO→massa, debounce 30 ms |
+| Tastino stick destro `BR`        | PB15 | INPUT_PULLUP, NO→massa, debounce 30 ms |
 | **EM STOP** (fungo) `EM`         | PB14 | INPUT_PULLUP, NO→massa, debounce 30 ms |
 | Button1 `B1`                     | PB11 | INPUT_PULLUP, NO→massa, debounce 30 ms |
 | Button2 `B2`                     | PB12 | INPUT_PULLUP, NO→massa, debounce 30 ms |
