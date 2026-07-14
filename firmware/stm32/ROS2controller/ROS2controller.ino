@@ -8,6 +8,8 @@ float ledBlinkTime = 500;
 boolean ledState = LOW;  // Stato attuale del primo LED
 
 // values for reading sticks
+// Convenzione (come sulla GUI RobotHex): Y = avanti/indietro, X = destra/sinistra.
+// Le etichette qui sotto sono ora COERENTI col cablaggio fisico (vedi setup/loop).
 
 float LX;
 float LY;
@@ -16,8 +18,19 @@ float RX;
 float RY;
 float RZ;
 
-int butL;
-int butR;
+// -------------------- Pulsanti (tutti NO -> massa, pull-up software) --------------------
+// Indici del vettore buttons[]: usati per pin, debounce e chiavi JSON.
+const int BTN_COUNT = 6;
+enum { B_BL = 0, B_BR, B_EM, B_B1, B_B2, B_B3 };
+// pin:            BL(L stick)  BR(R stick)  EM stop   Button1  Button2  Button3
+const int   btnPin[BTN_COUNT] = { PB15,      PB10,      PB14,    PB11,    PB12,   PB13 };
+const char* btnKey[BTN_COUNT] = { "BL",      "BR",      "EM",    "B1",    "B2",   "B3" };
+
+// Stato per il debounce
+int  btnLastReading[BTN_COUNT];   // ultima lettura grezza
+int  btnStable[BTN_COUNT];        // stato stabile filtrato (HIGH=riposo, LOW=premuto)
+long btnLastChange[BTN_COUNT];    // millis dell'ultimo cambio grezzo
+const long debounceMs = 30;       // finestra di stabilita' del debounce
 
 void setup()
 {
@@ -29,11 +42,15 @@ void setup()
   analogReadResolution(12);
 
   pinMode(PC13, OUTPUT);
-  
-  pinMode(PB0, INPUT_PULLUP);
-  pinMode(PB1, INPUT_PULLUP);
-  pinMode(PB2, INPUT_PULLUP);
-  pinMode(PB3, INPUT_PULLUP);
+
+  // Pulsanti: tutti Normally-Open verso massa -> pull-up interno.
+  // A riposo il pin legge HIGH; premuto legge LOW.
+  for (int i = 0; i < BTN_COUNT; i++) {
+    pinMode(btnPin[i], INPUT_PULLUP);
+    btnLastReading[i] = HIGH;
+    btnStable[i]      = HIGH;
+    btnLastChange[i]  = 0;
+  }
 
   pinMode(PA0, INPUT);
   pinMode(PA1, INPUT);
@@ -63,85 +80,83 @@ float deadzone(float value)
   return value;
 }
 
-int invButtons(int value)
+// Aggiorna il debounce di un pulsante e ritorna 1 = premuto, 0 = riposo.
+// I pulsanti sono attivi-bassi (NO verso massa con pull-up): premuto = LOW.
+int readButton(int i)
 {
-
-  if (value == 0)
-  {
-    value = 1;
+  int reading = digitalRead(btnPin[i]);
+  if (reading != btnLastReading[i]) {
+    btnLastChange[i]  = currentMillis;   // il segnale si e' mosso: (ri)parte il timer
+    btnLastReading[i] = reading;
   }
-  else if (value == 1)
-  {
-    value = 0;
+  if (currentMillis - btnLastChange[i] >= debounceMs) {
+    btnStable[i] = reading;              // stabile abbastanza a lungo: lo accettiamo
   }
-  return value;
+  return (btnStable[i] == LOW) ? 1 : 0;  // 1 = premuto
 }
 
 void loop()
 {
 
   currentMillis = millis();
-  if (currentMillis - previousMillisLoop >= loopTime) // run a loop eveRY 10ms
+  if (currentMillis - previousMillisLoop >= loopTime) // run a loop eveRY 20ms
   {
     previousMillisLoop = currentMillis; // reset the clock to time it
 
-    LY = analogRead(PA0);
-    LZ = analogRead(PA2);
-    LX = analogRead(PA1);
-    butL = digitalRead(PB0);
-    
-    RY = analogRead(PA3);
-    RZ = analogRead(PA4);
-    RX = analogRead(PA5);
-    butR = digitalRead(PB1);
+    // --- Assi: etichette coerenti col cablaggio (Y=avanti, X=laterale) ---
+    LY = analogRead(PA1);   // Left  Y  (avanti/indietro)
+    LX = analogRead(PA0);   // Left  X  (destra/sinistra)
+    LZ = analogRead(PA2);   // Left  Z  (yaw / rotazione manopola)
 
-   
+    RY = analogRead(PA5);   // Right Y  (avanti/indietro)
+    RX = analogRead(PA3);   // Right X  (destra/sinistra)
+    RZ = analogRead(PA4);   // Right Z  (yaw / rotazione manopola)
 
-    // remove offsets
+    // remove offsets + deadzone
 
     LY = LY - 2048;
     LY = deadzone(LY);
-    LZ = LZ - 2048;
-    LZ = deadzone(LZ);
     LX = LX - 2048;
     LX = deadzone(LX);
+    LZ = LZ - 2048;
+    LZ = deadzone(LZ);
     RY = RY - 2048;
     RY = deadzone(RY);
-    RZ = RZ - 2048;
-    RZ = deadzone(RZ);
     RX = RX - 2048;
     RX = deadzone(RX);
+    RZ = RZ - 2048;
+    RZ = deadzone(RZ);
 
-    butL = invButtons(butL);
-    butR = invButtons(butR);
+    // Segni: preservano l'orientamento end-to-end usato finora.
+    // (se una direzione risultasse invertita, cambia il segno del solo asse interessato)
+    LY = LY * 1;   // avanti = +
+    LX = LX * -1;  // invert value/direction as required based on wiring
+    LZ = LZ * 1;   // yaw normalizzato a ~[-1,1] come gli altri assi (gain 'feel' -> nel teleop)
 
-    RZ = RZ * 1;  // yaw normalizzato a ~[-1,1] come gli altri assi (gain 'feel' -> nel teleop)
-    RX = RX * 1;  // invert value/direction as required based on wiring
-    RY = RY * -1; // invert value/direction as required based on wiring
+    RY = RY * 1;   // avanti = +
+    RX = RX * -1;  // invert value/direction as required based on wiring
+    RZ = RZ * 1;   // yaw normalizzato a ~[-1,1] come gli altri assi (gain 'feel' -> nel teleop)
 
-    LZ = LZ * 1;  // yaw normalizzato a ~[-1,1] come gli altri assi (gain 'feel' -> nel teleop)
-    LX = LX * 1;  // invert value/direction as required based on wiring
-    LY = LY * -1; // invert value/direction as required based on wiring
+    // --- Pulsanti (con debounce). 1 = premuto ---
+    int btn[BTN_COUNT];
+    for (int i = 0; i < BTN_COUNT; i++) {
+      btn[i] = readButton(i);
+    }
 /*
     Serial.print("LY:");
     Serial.print(LY);
-    Serial.print(",LZ:");
-    Serial.print(LZ);
     Serial.print(",LX:");
     Serial.print(LX);
-    //Serial.print(",butL:");
-    //Serial.print(butL);
+    Serial.print(",LZ:");
+    Serial.print(LZ);
     Serial.print(",RY:");
     Serial.print(RY);
-    Serial.print(",RZ:");
-    Serial.print(RZ);
     Serial.print(",RX:");
-    Serial.println(RX);
-    //Serial.print(",butR:");
-    //Serial.println(butR);
-
+    Serial.print(RX);
+    Serial.print(",RZ:");
+    Serial.println(RZ);
 */
-    StaticJsonDocument<256> jsonDocument;  // margine per 6 assi + 2 tastini
+    StaticJsonDocument<512> jsonDocument;  // margine per 6 assi + 6 pulsanti
 
     char json_buffer[10]; // Dimensione del buffer in base ai valori massimi che vuoi formattare
     jsonDocument["LY"] = dtostrf(LY, 4, 2, json_buffer);
@@ -151,9 +166,11 @@ void loop()
     jsonDocument["RZ"] = dtostrf(RZ, 4, 2, json_buffer);
     jsonDocument["RX"] = dtostrf(RX, 4, 2, json_buffer);
 
-    // Tastini in cima ai joystick (interi 0/1). Dopo invButtons(): 1 = premuto.
-    jsonDocument["BL"] = butL;
-    jsonDocument["BR"] = butR;
+    // Pulsanti (interi 0/1, 1 = premuto):
+    //  BL/BR = tastini in cima agli stick; EM = fungo d'emergenza; B1..B3 = general purpose.
+    for (int i = 0; i < BTN_COUNT; i++) {
+      jsonDocument[btnKey[i]] = btn[i];
+    }
 
 
     String jsonString;
@@ -162,13 +179,12 @@ void loop()
 Serial.println(jsonString);
 
 
-    
 
-  } // end of 10ms loop
+  } // end of 20ms loop
 
     if (currentMillis - previousMillisLed >= ledBlinkTime) {
         previousMillisLed = currentMillis;  // Aggiorna il tempo precedente
-      
+
       if (ledState == LOW) {
           ledState = HIGH;
         } else {

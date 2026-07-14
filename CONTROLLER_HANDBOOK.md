@@ -11,23 +11,44 @@
 
 ---
 
-## 0. Stato attuale — RIPRENDI DA QUI (luglio 2026)
+## 0. Stato attuale — RIPRENDI DA QUI (2026-07-14)
 
-**Fatto e funzionante:**
-- Catena completa: STM32 → seriale → nodo ROS2 → topic → GUI, **verificata sul 7"**.
-- **GUI "plancia 2D"** (pad X/Y + barra Z + valori), assi rimappati alla convenzione ROS.
-- Avvio **user-friendly**: icona sul desktop → parte joystick + GUI insieme.
-- **Backup git** su GitHub privato: `git@github.com:gc-stunt97/ROS2-Remote-Controller.git`.
+**Controller ricostruito da zero** (nuovo case stampato 3D con alloggiamento per il router
+**RUT241 a bordo**), ricablato completamente, STM32 riflashato.
 
-**In sospeso (parcheggiato):**
-- **Flash del firmware STM32** con le migliorie (tastini `BL/BR`, yaw ×1): bloccato dai
-  tool DFU su ARM64 → si farà con **ST-Link/SWD** (vedi sez. 6). Finché non si flasha:
-  - i **tastini** dei joystick non sono attivi;
-  - lo **yaw** è normalizzato a ±1 lato Pi con `yaw_scale=0.5` (vedi sez. 4).
+**Fatto in questa sessione (2026-07-14):**
+- **Firmware STM32 aggiornato e FLASHATO via ST-Link/SWD** (finalmente!): nuova pinout,
+  6 assi + **6 pulsanti** (tastini stick `BL/BR` + **EM STOP** `EM` + 3 general purpose `B1/B2/B3`),
+  tutti con pull-up software + **debounce 30 ms**. Yaw ×1.
+- **Raddrizzata l'inversione storica X/Y:** nel vecchio firmware `LX/LY` (e `RX/RY`) erano
+  **scambiati** e lo swap era compensato in `joy_node.py`. Ora le chiavi JSON sono corrette
+  alla sorgente e il nodo fa **pass-through pulito** (`x<-LX`, `y<-LY`, `z<-LZ`). L'uscita ROS
+  è identica a prima. **Firmware e nodo vanno aggiornati in coppia.**
+- **`yaw_scale` default → 1.0** nel nodo (firmware ora yaw ×1).
+- **Nuovi topic pulsanti:** `emergency_stop`, `button_1/2/3` (oltre a `left/right_button`).
+- **Alias udev** `/dev/aira_controller` (regola in `udev/99-aira-controller.rules`); il launch
+  usa quello come default (override `serial_port:=...`).
 
-**Prossimi passi:** (a) flashare il firmware via ST-Link; (b) **integrazione col robot**:
-un nodo *teleop* che traduce i joystick in comandi di andatura (velocità/direzione/rotazione
-→ parametri del gait engine del robot).
+**⚠️ BLOCCO ATTUALE — riprendere da qui stasera:**
+Dopo il flash, la Blue Pill **non si enumera su USB** sul Pi. `dmesg` mostra tentativi che
+falliscono: `device descriptor read/64, error -32`, `Device not responding to setup address`,
+`device not accepting address, error -71`, `unable to enumerate USB device`. Firma di
+**problema elettrico/segnale USB, non firmware** (il micro *tenta* di connettersi → USB support
+era su CDC, ok). Il micro risulta dietro un **hub VIA Labs** (`2109:3431`). Piano di debug
+(sez. 7): **(1)** collegare la Blue Pill **direttamente a una porta del Pi** bypassando l'hub;
+**(2)** provare altro cavo dati (l'utente pensa non sia il cavo, "ha sempre funzionato");
+**(3)** se persiste → difetto classico Blue Pill: **pull-up D+ (PA12) sbagliato** (10k invece
+di 1.5k) → saldare 1.5k tra PA12 e 3V3. Nota: prima funzionava (forse altra unità Blue Pill o
+senza hub di mezzo).
+
+**Prossimi passi (dopo aver risolto l'USB):** (a) testare assi + tastini `BL/BR` via
+`ros2 topic echo`; (b) verificare direzioni (se invertite, flip del singolo segno nel firmware);
+(c) **integrazione col robot**: nodo *teleop* che traduce i joystick in comandi + **nodo safety**
+per l'EM STOP (quick-stop software: latch → ODrive IDLE → blocca joystick → reset deliberato +
+watchdog su heartbeat WiFi). L'EM stop è voluto come **quick-stop software**, non catena HW.
+
+**Backup git:** GitHub privato `git@github.com:gc-stunt97/ROS2-Remote-Controller.git`
+(le modifiche di oggi sono su disco Windows, **da committare/pushare**).
 
 ---
 
@@ -45,8 +66,14 @@ pubblica su topic ROS2, e il robot (subscriber sulla stessa rete) li usa per muo
   ROS2 **humble**.
 - **Display 7"** (touchscreen) collegato al Pi → mostra la GUI dei joystick.
 - **2 joystick arcade a 3 assi**: X e Y classici + **Z** ruotando la testa (yaw).
-- **STM32 "Blue Pill"** (STM32F103C8): legge i 6 assi analogici + i pulsanti e manda i
-  valori al Pi via **seriale USB** (`/dev/ttyACM0`).
+  Convenzione (come GUI RobotHex): **Y = avanti/indietro, X = destra/sinistra, Z = yaw**.
+  Ogni stick ha in cima un **tastino** (`BL`/`BR`).
+- **Pulsanti aggiunti (controller 2026-07):** un **EM STOP a fungo** (`EM`) + **3 pulsanti
+  general purpose** (`B1/B2/B3`). Tutti **Normally-Open verso massa**, pull-up software +
+  debounce nel firmware. Al momento **non collegati a nessuna funzione** (da decidere).
+- **Router RUT241 (Teltonika) ora a bordo** nel nuovo case (era roadmap, vedi Alimentazione).
+- **STM32 "Blue Pill"** (STM32F103C8): legge i 6 assi analogici + i 6 pulsanti e manda i
+  valori al Pi via **seriale USB** (alias stabile **`/dev/aira_controller`**, vedi §4).
 
 ### Alimentazione
 - Oggi: **powerbank ~10000 mAh** via **USB 5 V** → alimenta Pi 4 + display 7" + STM32 +
@@ -64,16 +91,18 @@ pubblica su topic ROS2, e il robot (subscriber sulla stessa rete) li usa per muo
 ## 3. Architettura software
 
 ```
-STM32 (Blue Pill)  --- legge 6 assi + 2 tastini
-      │  applica deadzone + scaling → riga JSON
-      │  Serial.println @ 57600 baud  (USB /dev/ttyACM0, ~50 Hz)
+STM32 (Blue Pill)  --- legge 6 assi + 6 pulsanti (con debounce)
+      │  applica deadzone + scaling → riga JSON (chiavi gia' corrette: Y=avanti, X=laterale)
+      │  Serial.println @ 57600 baud  (USB, alias /dev/aira_controller, ~50 Hz)
       ▼
 joy_node  (nodo ROS2 "joystick_node")
-      │  json.loads, rimappa assi, pubblica
+      │  json.loads, PASS-THROUGH assi (niente piu' swap), pubblica
       ├── /left_joystick_data   (geometry_msgs/Point)   assi joystick sinistro
       ├── /right_joystick_data  (geometry_msgs/Point)   assi joystick destro
-      ├── /left_button          (std_msgs/Bool)         tastino sinistro
-      └── /right_button         (std_msgs/Bool)         tastino destro
+      ├── /left_button          (std_msgs/Bool)         tastino stick sinistro (BL)
+      ├── /right_button         (std_msgs/Bool)         tastino stick destro (BR)
+      ├── /emergency_stop       (std_msgs/Bool)         fungo EM STOP (quick-stop sw)
+      └── /button_1|2|3         (std_msgs/Bool)         3 pulsanti general purpose
       ▼
 joypad_gui  (GUI "plancia 2D" sul 7")  ← e, in futuro, il ROBOT (subscriber via WiFi)
 ```
@@ -90,11 +119,12 @@ Workspace sul Pi: `~/ros2_ws/`, pacchetto `src/joypad_controller/` (ament_python
 - **`joy_node.py`** → nodo publisher. Legge la seriale in un **thread dedicato** con
   **riconnessione automatica** (se stacchi/riattacchi l'USB non crasha), scarta le righe
   sporche, chiusura pulita. Parametri ROS2:
-  - `serial_port` (default `/dev/ttyACM0`)
+  - `serial_port` (default `/dev/aira_controller` — alias udev; override `serial_port:=/dev/ttyACM0`)
   - `baud` (default `57600`)
   - `reconnect_period` (default `2.0` s)
-  - **`yaw_scale`** (default `0.5`) → il firmware *attuale* scala lo yaw ×2 (Z ~±2);
-    0.5 lo riporta a ±1. **Dopo aver flashato il firmware nuovo (yaw ×1), mettere `1.0`.**
+  - **`yaw_scale`** (default **`1.0`**) → il firmware ora normalizza lo yaw ×1. (Col vecchio
+    firmware yaw ×2 si passava `yaw_scale:=0.5`.)
+  - I pulsanti sono **opzionali** (`.get(...,0)`): il nodo non crasha se il firmware non li invia.
 - **`joypad_gui.py`** → GUI Tkinter: ogni joystick è un **pad 2D** con un pallino (X/Y),
   crosshair e cerchio di fondo scala; accanto una **barra** per lo Z; sotto i valori.
   Il pallino è **vuoto a riposo** e si **riempie** mentre premi il tastino (quando il
@@ -137,19 +167,26 @@ ros2 topic pub /right_joystick_data geometry_msgs/msg/Point "{x: 0.0, y: 1.0, z:
 ## 6. Firmware STM32
 
 - **Sorgente:** `firmware/stm32/ROS2controller/ROS2controller.ino` (Arduino/STM32duino,
-  libreria **ArduinoJson**). Legge PA0–PA5 (assi) + PB0/PB1 (tastini), applica deadzone e
-  scaling, e stampa una riga JSON. Dettagli protocollo: `firmware/stm32/README.md`.
-- **Bootloader della scheda:** **Maple** (USB id `1eaf:0004` in esecuzione, `1eaf:0003`
-  in DFU). La scheda si programma **via USB**, non serve l'ST-Link… in teoria (vedi sotto).
+  libreria **ArduinoJson**). Dettagli protocollo + tabella pin completa: `firmware/stm32/README.md`.
+- **Pinout (2026-07):** assi `LY=PA1, LX=PA0, LZ=PA2` / `RY=PA5, RX=PA3, RZ=PA4`;
+  pulsanti `BL=PB15, BR=PB10, EM=PB14, B1=PB11, B2=PB12, B3=PB13` (tutti `INPUT_PULLUP`,
+  NO→massa, debounce 30 ms, `1=premuto`); LED vita `PC13`.
+- **Contratto JSON:** `{"LY","LZ","LX","RY","RZ","RX","BL","BR","EM","B1","B2","B3"}` @ 57600 baud, ~50 Hz.
 
-### ⚠️ Come flashare (stato attuale) — usare l'ST-Link
-Il flash via USB/DFU **dal Pi (ARM64)** al momento **non funziona**: il core STM32 non
-include i binari `upload_reset`/`dfu-util` per aarch64, e col reset fisico la scheda non
-resta in DFU abbastanza. Da **Windows** entra in DFU ma manca il driver (servirebbe Zadig).
-→ **La via pulita e definitiva è l'ST-Link via SWD** (4 fili: SWDIO, SWCLK, GND, 3V3),
-che parla direttamente al chip ignorando USB e bootloader. Su Linux: `stlink-tools` / `st-flash`.
+### ✅ Come flashare — ST-Link via SWD (FUNZIONA, fatto il 2026-07-14)
+Il DFU via **USB nativo su STM32F103 non esiste** (il bootloader di sistema F103 fa DFU solo
+su UART/CAN, non USB) → quella strada è un vicolo cieco. **La via buona è l'ST-Link/SWD**
+(4 fili: SWDIO, SWCLK, GND, 3V3). Impostazioni **Arduino IDE** usate con successo:
+- Board: `Generic STM32F1 series` → Board part number `BluePill F103C8`
+- **Upload method: `STM32CubeProgrammer (SWD)`** ← la voce chiave (NON il menu "Programmer")
+- Prerequisiti: **STM32CubeProgrammer** installato + driver ST-Link.
+- Se non connette (cloni): "Connect Under Reset" in CubeProgrammer + pin NRST, oppure trucco
+  BOOT0=1 → reset → upload → BOOT0=0.
 
-Compilazione sul Pi (funziona già, produce il `.bin`):
+> Nota: dopo il flash SWD il **bootloader Maple** (vecchio, `1eaf:0004/0003`) risulta
+> sovrascritto; ora la scheda si presenta come **USB CDC STMicroelectronics `0483:5740`**.
+
+Compilazione headless sul Pi (produce il `.bin`, se serve):
 ```bash
 arduino-cli compile -b STMicroelectronics:stm32:GenF1:pnum=BLUEPILL_F103C8 \
   --output-dir ~/fw_out firmware/stm32/ROS2controller
@@ -159,11 +196,16 @@ arduino-cli compile -b STMicroelectronics:stm32:GenF1:pnum=BLUEPILL_F103C8 \
 
 ## 7. Problemi noti / gotcha (imparati sul campo)
 
-- **Flash DFU su Raspberry (aarch64):** non va (tool mancanti). Usare **ST-Link**.
+- **DFU via USB su STM32F103 NON esiste** (bootloader di sistema F103 = solo UART/CAN).
+  Flashare **sempre via ST-Link/SWD** (vedi §6). Il DFU dal Pi ARM64 non va comunque.
+- **⚠️ USB non enumera dopo il flash (BLOCCO ATTUALE 2026-07-14):** `dmesg` mostra
+  `error -32`/`error -71`, `Device not responding to setup address`, `unable to enumerate`.
+  È **segnale/elettrico**, non firmware. Debug: **(1)** collega la Blue Pill **diretta al Pi**,
+  non tramite l'hub VIA Labs `2109:3431`; **(2)** cavo dati alternativo; **(3)** se persiste,
+  **pull-up D+ (PA12)** sbagliato sulla Blue Pill (10k→1.5k tra PA12 e 3V3). `lsusb` non mostra
+  `0483:5740` finché non enumera.
 - **La GUI da SSH** dà `no $DISPLAY`: serve `export DISPLAY=:0` (o lanciarla dal 7", o via
   lo script/icona che lo gestiscono).
-- **`yaw_scale=0.5`** è un tampone finché il firmware ha lo yaw ×2. Dopo il flash → `1.0`.
-- **Tastini** (`BL/BR`) inattivi finché non si flasha il firmware aggiornato.
 - **USB del Pi si "impunta"** dopo tanti reset/flash falliti (la scheda sparisce da
   `lsusb`): **NON è rotta** — si risolve con `sudo reboot` del Pi.
 - **Blue Pill:** connettore micro-USB fragile, maneggiare i cavi con delicatezza.
@@ -190,12 +232,15 @@ serve quando cambiano `setup.py`/`package.xml`/launch/dipendenze.
 
 ## 9. Roadmap
 
-1. **Flash firmware via ST-Link** → attiva i tastini + yaw ×1 (poi `yaw_scale:=1.0`).
+1. ✅ **Flash firmware via ST-Link** — FATTO (tastini + EM/B1-B3 + yaw ×1). ⏳ **Sbloccare
+   l'USB** (enumerazione fallita, vedi §0/§7) per poter leggere la seriale.
 2. **Integrazione col robot (il pezzo grosso):** nodo *teleop* che sottoscrive
    `right_joystick_data` (avanti = velocità, yaw = rotazione) e `left_joystick_data`, e
    traduce in **parametri del gait engine** del robot (vedi `ROBOTHEX_HANDBOOK.md`).
-3. **Rete:** far parlare controller e robot via WiFi (stesso `ROS_DOMAIN_ID`, DDS discovery).
-4. (Poi) streaming video FPV su pipeline dedicata — vedi handbook robot sez. 6b.
+3. **Nodo safety / EM STOP:** quick-stop software → latch su `/emergency_stop` → ODrive IDLE →
+   blocca joystick → reset deliberato; + **watchdog** su heartbeat (fail-safe se cade il WiFi).
+4. **Rete:** far parlare controller e robot via WiFi (stesso `ROS_DOMAIN_ID`, DDS discovery).
+5. (Poi) streaming video FPV su pipeline dedicata — vedi handbook robot sez. 6b.
 
 ---
 

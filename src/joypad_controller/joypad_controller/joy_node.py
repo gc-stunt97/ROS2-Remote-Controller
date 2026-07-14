@@ -2,13 +2,19 @@
 """Nodo publisher dei joystick.
 
 Legge la seriale dello STM32 (Blue Pill), interpreta la riga JSON
-{"LX","LY","LZ","RX","RY","RZ","BL","BR"} e pubblica:
+{"LX","LY","LZ","RX","RY","RZ","BL","BR","EM","B1","B2","B3"} e pubblica:
 - `left_joystick_data` / `right_joystick_data`  (geometry_msgs/Point, assi)
 - `left_button` / `right_button`                (std_msgs/Bool, tastino in cima)
+- `emergency_stop`                              (std_msgs/Bool, fungo NO)
+- `button_1` / `button_2` / `button_3`          (std_msgs/Bool, general purpose)
 
 Convenzione assi ROS: x = laterale (destra +), y = avanti (+), z = yaw.
-I pulsanti sono opzionali: se il firmware non e' ancora aggiornato (chiavi BL/BR
-assenti) vengono pubblicati come False, senza errori.
+Dal firmware >= 2026-07 le chiavi JSON sono gia' semanticamente corrette
+(LY/RY = avanti, LX/RX = laterale), quindi qui e' un pass-through pulito:
+Point.x <- LX/RX, Point.y <- LY/RY, Point.z <- LZ/RZ.
+
+I pulsanti sono opzionali: se il firmware non li invia (chiavi assenti)
+vengono pubblicati come False, senza errori.
 
 Robustezza:
 - porta e baud sono parametri ROS2 (niente valori "murati" nel codice);
@@ -39,10 +45,9 @@ class JoystickNode(Node):
         self.declare_parameter("serial_port", "/dev/ttyACM0")
         self.declare_parameter("baud", 57600)
         self.declare_parameter("reconnect_period", 2.0)  # s di attesa tra i tentativi
-        # Il firmware ATTUALE sul micro scala lo yaw x2 -> Z arriva a ~±2. Con 0.5 lo
-        # riportiamo a ±1 come gli altri assi, SENZA riflashare. (Il firmware aggiornato
-        # nel repo ha gia' yaw x1: quando lo flasherai via ST-Link, metti yaw_scale:=1.0.)
-        self.declare_parameter("yaw_scale", 0.5)
+        # Il firmware nel repo normalizza gia' lo yaw a ~±1 (Z x1). Default 1.0.
+        # (Se giri ancora il vecchio firmware con yaw x2, lancia con yaw_scale:=0.5.)
+        self.declare_parameter("yaw_scale", 1.0)
         self._port = self.get_parameter("serial_port").value
         self._baud = int(self.get_parameter("baud").value)
         self._reconnect = float(self.get_parameter("reconnect_period").value)
@@ -52,6 +57,10 @@ class JoystickNode(Node):
         self._pub_right = self.create_publisher(Point, "right_joystick_data", 10)
         self._pub_btn_left = self.create_publisher(Bool, "left_button", 10)
         self._pub_btn_right = self.create_publisher(Bool, "right_button", 10)
+        self._pub_estop = self.create_publisher(Bool, "emergency_stop", 10)
+        self._pub_b1 = self.create_publisher(Bool, "button_1", 10)
+        self._pub_b2 = self.create_publisher(Bool, "button_2", 10)
+        self._pub_b3 = self.create_publisher(Bool, "button_3", 10)
 
         self._serial = None
         self._stop = threading.Event()
@@ -107,20 +116,28 @@ class JoystickNode(Node):
         try:
             data = json.loads(line)
             # Convenzione ROS: x = laterale (destra +), y = avanti (+), z = yaw.
-            # Il firmware ha gli assi scambiati (avanti->X, destra->Y): rimappiamo.
-            left = Point(x=float(data["LY"]), y=float(data["LX"]),
+            # Il firmware invia gia' le chiavi corrette: pass-through pulito.
+            left = Point(x=float(data["LX"]), y=float(data["LY"]),
                          z=float(data["LZ"]) * self._yaw_scale)
-            right = Point(x=float(data["RY"]), y=float(data["RX"]),
+            right = Point(x=float(data["RX"]), y=float(data["RY"]),
                           z=float(data["RZ"]) * self._yaw_scale)
-            # Pulsanti: opzionali (assenti se il firmware non e' ancora aggiornato).
+            # Pulsanti: opzionali (assenti se il firmware non li invia).
             btn_left = bool(int(data.get("BL", 0)))
             btn_right = bool(int(data.get("BR", 0)))
+            estop = bool(int(data.get("EM", 0)))
+            b1 = bool(int(data.get("B1", 0)))
+            b2 = bool(int(data.get("B2", 0)))
+            b3 = bool(int(data.get("B3", 0)))
         except (json.JSONDecodeError, KeyError, ValueError, TypeError):
             return  # riga sporca: la saltiamo
         self._pub_left.publish(left)
         self._pub_right.publish(right)
         self._pub_btn_left.publish(Bool(data=btn_left))
         self._pub_btn_right.publish(Bool(data=btn_right))
+        self._pub_estop.publish(Bool(data=estop))
+        self._pub_b1.publish(Bool(data=b1))
+        self._pub_b2.publish(Bool(data=b2))
+        self._pub_b3.publish(Bool(data=b3))
 
     # --- ciclo di vita ----------------------------------------------------
     def destroy_node(self):

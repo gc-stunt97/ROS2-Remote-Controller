@@ -1,0 +1,20 @@
+# Regola udev per il controller AIRA (STM32 "Blue Pill", USB CDC).
+#
+# Crea un alias STABILE /dev/aira_controller che punta sempre alla Blue Pill,
+# indipendentemente dalla presa USB usata o dall'ordine di enumerazione
+# (cosi' /dev/ttyACM0 -> /dev/ttyACM1 non rompe piu' il nodo ROS).
+#
+# VID:PID di default del core STM32duino (USB CDC generic Serial) = 0483:5740.
+# VERIFICA i tuoi con:  udevadm info -a -n /dev/ttyACM0 | grep -E 'idVendor|idProduct|serial'
+# e sostituiscili qui sotto se diversi.
+#
+# Installazione (sul Pi del controller):
+#   sudo cp udev/99-aira-controller.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#   # poi scollega/ricollega la Blue Pill e verifica:  ls -l /dev/aira_controller
+#
+# Se hai piu' dispositivi STM32 con lo stesso 0483:5740, rendi la regola unica
+# scommentando ATTRS{serial}=="..." con il serial letto dal comando qui sopra.
+
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", SYMLINK+="aira_controller", MODE="0660", GROUP="dialout"
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", ATTRS{serial}=="METTI_QUI_IL_SERIAL", SYMLINK+="aira_controller", MODE="0660", GROUP="dialout"
