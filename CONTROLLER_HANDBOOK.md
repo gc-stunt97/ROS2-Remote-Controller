@@ -11,12 +11,44 @@
 
 ---
 
-## 0. Stato attuale — RIPRENDI DA QUI (2026-07-14)
+## 0. Stato attuale — RIPRENDI DA QUI (2026-07-14, sera)
 
 **Controller ricostruito da zero** (nuovo case stampato 3D con alloggiamento per il router
 **RUT241 a bordo**), ricablato completamente, STM32 riflashato.
 
-**Fatto in questa sessione (2026-07-14):**
+> ## ✅ IL TELECOMANDO È COMPLETO E VERIFICATO END-TO-END
+>
+> Assi coerenti (avanti = `Y+`, destra = `X+`), tastini sui pin giusti, yaw a ±1, alias udev
+> attivo e stabile **anche dopo un riflash**. Funzionano **entrambe le plance** (RobotHex e
+> AIRA), ognuna con la sua icona sul desktop del Pi. Tutto committato e pushato.
+>
+> ## ▶️ PROSSIMO PASSO: LA RETE — vedi **sez. 11** (piano deciso, da implementare)
+>
+> Il RUT241 è a bordo e alimentato; manca il cavo Ethernet al Pi e tutta la configurazione.
+> La sez. 11 ha il piano completo campo per campo: **non riprogettarlo, eseguilo.**
+
+**Fatto in questa sessione (2026-07-14, sera):**
+- **RISOLTO il blocco USB** che bloccava tutto: la Blue Pill non enumerava (`descriptor read
+  error -32`, `error -71`, `unable to enumerate`). **Causa: `USB support` su `None`** nell'IDE
+  Arduino → sketch compilato **senza stack USB CDC**. Il pull-up su D+ della Blue Pill è
+  cablato in hardware, quindi l'host vedeva il device presentarsi e nessuno rispondeva ai
+  descrittori: **un sintomo che urla "guasto elettrico" ed è configurazione pura.**
+  Fix: `USB support` = `CDC (generic 'Serial' supersede U(S)ART)` + riflash SWD.
+  ⚠️ *Questo stesso file, prima, dava per scontato "USB support era su CDC, ok" — ed era
+  proprio quello. Lezione: un'assunzione non verificata scritta nell'handbook fa perdere ore.*
+- **Tastini `BL`/`BR` invertiti** rispetto al cablaggio reale → corretti **alla sorgente** nel
+  firmware (ora `BL=PB10`, `BR=PB15`), non compensati a valle.
+- **Regola udev installata sul Pi**: `/dev/aira_controller` ora esiste davvero (era scritta dal
+  14/07 pomeriggio ma non era **mai** stata copiata in `/etc/udev/rules.d/`, quindi non aveva
+  mai funzionato nemmeno una volta).
+- **Icona AIRA installata** sul desktop del Pi (l'app non partiva perché `aira_dashboard` non
+  era mai stato compilato lì: `colcon build` senza `--packages-select`).
+- **Due falsi allarmi** da ricordare: (1) gli stick sembravano avere un offset di centro
+  (`LY=-0.12`) → era **il telecomando appoggiato sul letto** che spingeva gli stick;
+  (2) X/Y invertiti e Z fermo a 0.50 → **non erano due bug ma uno solo**, il `joy_node`
+  vecchio ancora in esecuzione / non pullato sul Pi. Vedi sez. 7.
+
+**Fatto in questa sessione (2026-07-14, pomeriggio):**
 - **Firmware STM32 aggiornato e FLASHATO via ST-Link/SWD** (finalmente!): nuova pinout,
   6 assi + **6 pulsanti** (tastini stick `BL/BR` + **EM STOP** `EM` + 3 general purpose `B1/B2/B3`),
   tutti con pull-up software + **debounce 30 ms**. Yaw ×1.
@@ -29,26 +61,20 @@
 - **Alias udev** `/dev/aira_controller` (regola in `udev/99-aira-controller.rules`); il launch
   usa quello come default (override `serial_port:=...`).
 
-**⚠️ BLOCCO ATTUALE — riprendere da qui stasera:**
-Dopo il flash, la Blue Pill **non si enumera su USB** sul Pi. `dmesg` mostra tentativi che
-falliscono: `device descriptor read/64, error -32`, `Device not responding to setup address`,
-`device not accepting address, error -71`, `unable to enumerate USB device`. Firma di
-**problema elettrico/segnale USB, non firmware** (il micro *tenta* di connettersi → USB support
-era su CDC, ok). Il micro risulta dietro un **hub VIA Labs** (`2109:3431`). Piano di debug
-(sez. 7): **(1)** collegare la Blue Pill **direttamente a una porta del Pi** bypassando l'hub;
-**(2)** provare altro cavo dati (l'utente pensa non sia il cavo, "ha sempre funzionato");
-**(3)** se persiste → difetto classico Blue Pill: **pull-up D+ (PA12) sbagliato** (10k invece
-di 1.5k) → saldare 1.5k tra PA12 e 3V3. Nota: prima funzionava (forse altra unità Blue Pill o
-senza hub di mezzo).
+**Prossimi passi, in ordine:**
+1. **Rete: link privato RUT241** → **sez. 11**. È il prerequisito di tutto il resto: finché
+   robot e controller stanno sulla WiFi di casa, il link (e quindi l'EM stop software)
+   dipende da un router che non è a bordo.
+2. **Integrazione col robot**: nodo *teleop* che traduce i joystick in comandi.
+3. **Nodo safety / EM STOP**: quick-stop software (latch su `/emergency_stop` → ODrive IDLE →
+   blocca joystick → reset deliberato) + **watchdog su heartbeat**, fail-safe se cade il link.
+   L'EM stop è voluto come **quick-stop software**, non catena di sicurezza HW.
+4. Decidere cosa fanno `B1/B2/B3` e i tastini degli stick: oggi **funzionano ma non sono
+   collegati a nessuna funzione**.
 
-**Prossimi passi (dopo aver risolto l'USB):** (a) testare assi + tastini `BL/BR` via
-`ros2 topic echo`; (b) verificare direzioni (se invertite, flip del singolo segno nel firmware);
-(c) **integrazione col robot**: nodo *teleop* che traduce i joystick in comandi + **nodo safety**
-per l'EM STOP (quick-stop software: latch → ODrive IDLE → blocca joystick → reset deliberato +
-watchdog su heartbeat WiFi). L'EM stop è voluto come **quick-stop software**, non catena HW.
-
-**Backup git:** GitHub privato `git@github.com:gc-stunt97/ROS2-Remote-Controller.git`
-(le modifiche di oggi sono su disco Windows, **da committare/pushare**).
+**Backup git:** GitHub privato `git@github.com:gc-stunt97/ROS2-Remote-Controller.git`.
+Tutto il lavoro del 14/07 è **committato e pushato** su `main` (`f3b2c5e`, `fa289dd`,
+`bbf4682`). Il deploy è: si pusha su `main` da Windows, il Pi fa `git pull` + `colcon build`.
 
 ---
 
@@ -198,12 +224,38 @@ arduino-cli compile -b STMicroelectronics:stm32:GenF1:pnum=BLUEPILL_F103C8 \
 
 - **DFU via USB su STM32F103 NON esiste** (bootloader di sistema F103 = solo UART/CAN).
   Flashare **sempre via ST-Link/SWD** (vedi §6). Il DFU dal Pi ARM64 non va comunque.
-- **⚠️ USB non enumera dopo il flash (BLOCCO ATTUALE 2026-07-14):** `dmesg` mostra
-  `error -32`/`error -71`, `Device not responding to setup address`, `unable to enumerate`.
-  È **segnale/elettrico**, non firmware. Debug: **(1)** collega la Blue Pill **diretta al Pi**,
-  non tramite l'hub VIA Labs `2109:3431`; **(2)** cavo dati alternativo; **(3)** se persiste,
-  **pull-up D+ (PA12)** sbagliato sulla Blue Pill (10k→1.5k tra PA12 e 3V3). `lsusb` non mostra
-  `0483:5740` finché non enumera.
+- **⚠️⚠️ USB non enumera dopo il flash → CONTROLLA IL MENU PRIMA DI DISSALDARE.**
+  Sintomo: `dmesg` dà `descriptor read error -32`, `error -71`, `unable to enumerate`, e
+  `lsusb` non mostra `0483:5740`. **Sembra un guasto elettrico. Quasi sempre non lo è.**
+  **Causa reale (2026-07-14, costata mezza serata): `Tools → USB support` su `None`** nell'IDE
+  Arduino → lo sketch gira benissimo (LED compreso) ma **non ha stack USB CDC**, e `Serial`
+  finisce sulla UART1 (PA9/PA10). Il pull-up su D+ della Blue Pill è **cablato in hardware**,
+  quindi l'host vede il device presentarsi e poi non risponde nessuno: **da qui la firma
+  "elettrica" ingannevole.** Fix: `USB support` = `CDC (generic 'Serial' supersede U(S)ART)`
+  e riflash.
+  Controlli in ordine, dal gratis al fastidioso: **(1)** il menu `USB support`; **(2)** jumper
+  **BOOT0 = 0** (a 1 gira il bootloader di sistema, che su F103 è solo UART → stesso sintomo);
+  **(3)** LED PC13: il firmware lampeggia a **1 Hz** (500 ms) — se lampeggia ~9× più lento il
+  quarzo da 8 MHz non oscilla e l'USB non può funzionare (servono 48 MHz esatti); se non
+  lampeggia, il firmware non gira. **Solo se tutto questo è a posto** passare all'elettrico:
+  Blue Pill diretta al Pi senza l'hub VIA Labs `2109:3431`, altro cavo dati, e come ultima
+  ipotesi il pull-up D+ (PA12) sbagliato (10k→1.5k tra PA12 e 3V3).
+- **⚠️ X/Y invertiti nella GUI *e* Z fermo a 0.50 = UN SOLO problema, non due:** sul Pi gira il
+  **`joy_node` vecchio** (quello che compensava lo swap e dimezzava lo yaw) mentre il firmware
+  è già nuovo. Fix: `git pull` + rebuild + **riavviare il nodo**. **Non toccare il codice**:
+  `joy_node` e le due plance sono già pass-through corretti.
+- **Il `git pull` non sostituisce un nodo già in esecuzione.** Chiudere e riaprire la GUI basta
+  (il launch spegne tutto quando chiudi la finestra, event handler in fondo ai launch file).
+  Un nodo partito ore prima gira ancora col codice di allora: sintomo classico "ho aggiornato
+  ma non cambia niente".
+- **Con USB CDC il baud di `Serial.begin(57600)` è virtuale e ignorato**: un mismatch di baud
+  lato `joy_node.py` **non può** essere la causa di un problema.
+- **Prima di dare la colpa al firmware, guarda il telecomando.** Il 14/07 gli assi Y uscivano
+  a `-0.12`/`-0.19` da fermi: era il telecomando **appoggiato sul letto** che spingeva gli
+  stick. Il firmware stava dicendo la verità.
+- **Un'app che non parte dall'icona muore muta** (`Terminal=false`): lanciare lo script a mano
+  (`~/aira-controller.sh`) per vedere l'errore. Causa tipica: pacchetto mai compilato su quel
+  Pi, perché si è fatto `colcon build --packages-select <altro>`.
 - **La GUI da SSH** dà `no $DISPLAY`: serve `export DISPLAY=:0` (o lanciarla dal 7", o via
   lo script/icona che lo gestiscono).
 - **USB del Pi si "impunta"** dopo tanti reset/flash falliti (la scheda sparisce da
@@ -232,15 +284,19 @@ serve quando cambiano `setup.py`/`package.xml`/launch/dipendenze.
 
 ## 9. Roadmap
 
-1. ✅ **Flash firmware via ST-Link** — FATTO (tastini + EM/B1-B3 + yaw ×1). ⏳ **Sbloccare
-   l'USB** (enumerazione fallita, vedi §0/§7) per poter leggere la seriale.
-2. **Integrazione col robot (il pezzo grosso):** nodo *teleop* che sottoscrive
+1. ✅ **Telecomando completo e verificato** — FATTO il 14/07: flash via ST-Link, USB sbloccato,
+   assi/tastini/yaw corretti, alias udev attivo, entrambe le plance funzionanti. Vedi §0.
+2. ⏳ **Rete: link privato RUT241** — piano deciso e scritto, **da eseguire**: vedi **sez. 11**.
+   È il prerequisito dei punti 3 e 4: l'EM stop software vale quanto vale il link su cui viaggia.
+3. **Integrazione col robot (il pezzo grosso):** nodo *teleop* che sottoscrive
    `right_joystick_data` (avanti = velocità, yaw = rotazione) e `left_joystick_data`, e
    traduce in **parametri del gait engine** del robot (vedi `ROBOTHEX_HANDBOOK.md`).
-3. **Nodo safety / EM STOP:** quick-stop software → latch su `/emergency_stop` → ODrive IDLE →
-   blocca joystick → reset deliberato; + **watchdog** su heartbeat (fail-safe se cade il WiFi).
-4. **Rete:** far parlare controller e robot via WiFi (stesso `ROS_DOMAIN_ID`, DDS discovery).
-5. (Poi) streaming video FPV su pipeline dedicata — vedi handbook robot sez. 6b.
+4. **Nodo safety / EM STOP:** quick-stop software → latch su `/emergency_stop` → ODrive IDLE →
+   blocca joystick → reset deliberato; + **watchdog** su heartbeat (fail-safe se cade il link).
+5. **Funzioni dei pulsanti:** `B1/B2/B3` e i tastini stick funzionano ma **non fanno niente** —
+   da decidere.
+6. (Poi) streaming video FPV su pipeline dedicata — vedi handbook robot sez. 6b.
+   ⚠️ Attenzione all'interazione con la sez. 11.4 (radio singola del RUT241).
 
 ---
 
@@ -260,5 +316,90 @@ la base mobile **AIRA** (repo `gc-stunt97/AIRA_Robot`). Cambia solo la GUI che g
 - **Avvio:** `ros2 launch aira_dashboard aira.launch.py` (joystick + dashboard). Serve
   `python3-tk`. Icona desktop dedicata: `desktop/AIRA-Controller.desktop` +
   `desktop/aira-controller.sh` (installazione come per RobotHex, vedi `desktop/README.md`).
-- **Rete:** stesso `ROS_DOMAIN_ID` del robot AIRA (come per RobotHex).
+- **Rete:** stesso `ROS_DOMAIN_ID` del robot AIRA (come per RobotHex). Vedi **sez. 11**.
 - **Build:** `colcon build --symlink-install --packages-select aira_dashboard` in `~/ros2_ws`.
+
+---
+
+## 11. Rete — link privato RUT241 (PIANO DECISO, da implementare)
+
+> Stato: il RUT241 è **fisicamente a bordo e alimentato** (boost DC-DC 5 V → 12 V dalla
+> powerbank, fatto). **Manca:** il cavo Ethernet al Pi e tutta la configurazione.
+> Questo piano è già stato discusso e deciso (14/07 sera): **eseguirlo, non ridiscuterlo.**
+> **SIM/LTE: non la si usa**, per ora non interessa.
+
+### 11.1 Perché (il problema che risolve)
+
+Oggi robot e controller stanno **entrambi sulla WiFi di casa**: funziona, ma il link dipende
+da un router che **non è a bordo**. Fuori portata, a casa d'altri, o se cade la corrente al
+router di casa → il telecomando smette di comandare. E siccome l'**EM stop è software** (il
+fungo funziona solo se il messaggio arriva), la rete **non è un comfort: è parte della catena
+di sicurezza**.
+
+Col RUT241 a bordo **la rete la porti con te**: router e telecomando sono lo stesso oggetto,
+alimentato dalla stessa powerbank. Se c'è il telecomando, c'è la rete.
+
+### 11.2 Topologia
+
+```
+   [Pi controller] --cavo Ethernet--> [porta LAN del RUT241]
+                                             |
+                                        (WiFi privata "AIRA-LINK")
+                                             |
+                                        [Pi robot]
+```
+
+- **Il Pi del controller va nella porta LAN. MAI la WAN.** Per un router, **WAN = la porta che
+  guarda "fuori"** (verso internet) e **LAN = le porte per la roba tua**; tra le due c'è un
+  firewall. Mettendo il Pi in WAN diresti al router "questo coso è internet" → il router lo
+  firewalla e **il robot in WiFi non riesce a parlargli**. Sembra un guasto, è il router che fa
+  il suo mestiere.
+- Pi e router sono a 10 cm dentro lo stesso case: **cablato**, sarebbe assurdo farli parlare via radio.
+- Il traffico robot↔controller **non esce mai dal RUT241** (entra dalla radio, esce dal cavo):
+  non passa da casa nemmeno se la WiFi di casa c'è.
+
+### 11.3 Configurazione RUT241 (da fare, campo per campo)
+
+1. **Sottorete LAN diversa da quella di casa.** Se casa è `192.168.1.x`, il RUT241 deve stare su
+   altro, es. **`192.168.10.x`**. ⚠️ Se coincidono, il Pi che sta su entrambe le reti non sa più
+   dove instradare: è il classico problema che sembra stregoneria.
+2. **WiFi AP**: SSID es. `AIRA-LINK`, WPA2. **`client isolation` = OFF** (vedi 11.5).
+3. **IP fissi** via DHCP reservation (servono al punto 11.5):
+   - controller → `192.168.10.10`
+   - robot      → `192.168.10.20`
+
+### 11.4 Internet (opzionale, si può)
+
+Il RUT241 può collegarsi **lui** alla WiFi di casa come se fosse un telefono e ridistribuire
+quell'internet alla rete privata: in RutOS si chiama **WiFi as WAN** (la porta WAN fisica resta
+vuota, il "fuori" arriva via radio). Così robot e controller si parlano in privato **e** hanno
+internet per `git pull` / `apt`. Se la WiFi di casa cade, **il teleop continua a funzionare**:
+perde solo internet.
+
+⚠️ Prezzo: il RUT241 ha **una sola radio 2.4 GHz**, che così fa da AP e da client sullo stesso
+canale. Per i joystick (decine di KB/s) irrilevante. **Quando arriverà il video FPV** (roadmap
+sez. 9.5) potrebbe diventare stretto → valutare se spegnere il WiFi-as-WAN mentre si vola.
+
+### 11.5 ⚠️ Il discovery DDS (la trappola da prevedere PRIMA)
+
+Quando un nodo ROS2 parte **non sa chi altro c'è**: per scoprirlo **urla nella stanza**, cioè
+manda un messaggio indirizzato a "chiunque sia in ascolto" (**multicast**) che dice "ciao, sono
+`joy_node`, pubblico `left_joystick_data`". Chi è interessato risponde e da lì in poi si parlano
+diretti. Questa fase si chiama **discovery**.
+
+**Un access point WiFi spesso si rifiuta di ripetere quelle urla tra i suoi client.** In un bar
+è giusto (non vuoi che il telefono di uno sconosciuto veda il tuo), per noi è un disastro. Due
+impostazioni lo fanno: la **client isolation** e la gestione **multicast / IGMP snooping**.
+
+Sintomo velenoso: i topic ci sono su entrambi i lati **ma non arriva niente**, `ros2 node list`
+ne vede metà. **Non sembra un problema di rete: sembra codice rotto.**
+
+**Soluzione scelta: togliere di mezzo le urla.** Con due sole macchine si usa **CycloneDDS con i
+peer unicast espliciti**: si dice a ciascuna l'IP dell'altra e il multicast non serve più.
+Deterministico, e indipendente da come è configurato l'AP. Prerequisito: gli **IP fissi** di 11.3.
+(Più il solito `ROS_DOMAIN_ID` uguale sulle due macchine.)
+
+### 11.6 Da dove ripartire
+
+Aprire l'interfaccia web del RUT241 e fare 11.3 (sottorete, SSID, riservazioni), poi il cavo
+Ethernet, poi 11.5 (file di config CycloneDDS sulle due macchine), poi 11.4 se si vuole internet.
