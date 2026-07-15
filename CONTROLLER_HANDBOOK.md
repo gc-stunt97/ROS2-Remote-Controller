@@ -323,10 +323,29 @@ la base mobile **AIRA** (repo `gc-stunt97/AIRA_Robot`). Cambia solo la GUI che g
 
 ## 11. Rete — link privato RUT241 (PIANO DECISO, da implementare)
 
-> Stato: il RUT241 è **fisicamente a bordo e alimentato** (boost DC-DC 5 V → 12 V dalla
-> powerbank, fatto). **Manca:** il cavo Ethernet al Pi e tutta la configurazione.
-> Questo piano è già stato discusso e deciso (14/07 sera): **eseguirlo, non ridiscuterlo.**
-> **SIM/LTE: non la si usa**, per ora non interessa.
+> **STATO (2026-07-15): lato CONTROLLER FATTO E VERIFICATO.** Manca il robot (sez. 11.7) e
+> l'internet opzionale (sez. 11.4). **SIM/LTE: non la si usa**, non interessa.
+
+### 11.0 Valori reali (la mappa della rete, aggiornarla se cambia)
+
+| Cosa | Indirizzo | Come |
+|---|---|---|
+| **Rete di casa** | `192.168.1.0/24`, gateway `192.168.1.1` | DHCP |
+| **RUT241 (rete privata)** | `192.168.10.1` | LAN spostata a mano dal default |
+| **Pi controller — `eth0`** | **`192.168.10.10`** | **statico** (MAC `e4:5f:01:7e:4d:43`) |
+| **Pi controller — `wlan0`** | `192.168.1.127` | DHCP di casa → internet |
+| **Robot — WiFi** | **`192.168.10.20`** | ⏳ da fare, sez. 11.7 |
+
+⚠️ **Il RUT241 di fabbrica sta su `192.168.1.1` — lo stesso indirizzo del router di casa.**
+È la prima cosa da cambiare, prima di collegare qualsiasi cosa: il 14/07 il cavo è stato
+attaccato con le sottoreti ancora coincidenti e il risultato è stato due DHCP che
+distribuivano indirizzi in conflitto, mDNS impazzito e `Controller.local` che risolveva a
+`127.0.0.2` (SSH da VS Code morto). Per configurare il router **serve un dispositivo che
+stia solo sulla sua rete** (il telefono, con i dati mobili spenti): da un PC collegato a
+casa, `192.168.1.1` ti porta sul router di casa, non sul RUT241.
+
+**Il Pi del controller è bi-residente ed è il ponte:** sta su casa via `wlan0` e sulla rete
+privata via `eth0`. Da Windows si raggiunge il robot passando da lui (ProxyJump).
 
 ### 11.1 Perché (il problema che risolve)
 
@@ -358,15 +377,35 @@ alimentato dalla stessa powerbank. Se c'è il telecomando, c'è la rete.
 - Il traffico robot↔controller **non esce mai dal RUT241** (entra dalla radio, esce dal cavo):
   non passa da casa nemmeno se la WiFi di casa c'è.
 
-### 11.3 Configurazione RUT241 (da fare, campo per campo)
+### 11.3 Configurazione — FATTA lato controller (2026-07-15)
 
-1. **Sottorete LAN diversa da quella di casa.** Se casa è `192.168.1.x`, il RUT241 deve stare su
-   altro, es. **`192.168.10.x`**. ⚠️ Se coincidono, il Pi che sta su entrambe le reti non sa più
-   dove instradare: è il classico problema che sembra stregoneria.
-2. **WiFi AP**: SSID es. `AIRA-LINK`, WPA2. **`client isolation` = OFF** (vedi 11.5).
-3. **IP fissi** via DHCP reservation (servono al punto 11.5):
-   - controller → `192.168.10.10`
-   - robot      → `192.168.10.20`
+1. ✅ **LAN del RUT241 spostata** da `192.168.1.1` a **`192.168.10.1`** (Network → Interfaces →
+   LAN → Edit). Applicando, il dispositivo da cui stai configurando **si scollega**: è il
+   risultato atteso, non un errore. Poi l'interfaccia vive su `http://192.168.10.1`.
+2. ✅ **Pi controller → porta LAN** del RUT241, con **IP statico lato Pi**, non riservazione DHCP:
+
+   ```bash
+   sudo nmcli connection modify "Wired connection 1" \
+     ipv4.method manual ipv4.addresses 192.168.10.10/24 \
+     ipv4.gateway "" ipv4.dns "" ipv4.never-default yes
+   sudo nmcli connection up "Wired connection 1"
+   ```
+
+   **Perché statico e non riservazione DHCP:** la riservazione dipende dal router (resetti o
+   sostituisci il RUT241 → salta). L'IP statico vive sulla macchina e sopravvive a tutto.
+   `.10`/`.20` sono **fuori dal pool DHCP** (che parte da `.100`), quindi non collidono.
+   **`gateway ""` + `dns ""` + `never-default` sono la parte importante:** il cavo è un
+   *collegamento*, non un'*uscita*. Vedi il gotcha qui sotto.
+3. ⏳ **Robot** → `192.168.10.20`: sez. 11.7.
+
+> ### ⚠️ Gotcha: due gateway, e il Pi sceglie quello sbagliato
+> NetworkManager assegna metrica **100 all'Ethernet** e **600 al WiFi** (più basso = vince),
+> presumendo che il cavo sia meglio della radio. Qui è **falso**: il cavo porta al RUT241, che
+> non ha nessuna uscita. Appena collegato, il Pi ha smesso di avere internet — e il sintomo è
+> subdolo perché **il DNS continuava a funzionare** (`getent hosts github.com` risolveva) mentre
+> i pacchetti sparivano. La prova regina è `ping 8.8.8.8` → `From 192.168.10.1 Destination Net
+> Unreachable`: **è il router stesso che dichiara di non sapere dove mandarli.**
+> Fix già applicato e persistente: `ipv4.never-default yes` sulla connessione via cavo.
 
 ### 11.4 Internet (opzionale, si può)
 
@@ -399,7 +438,20 @@ peer unicast espliciti**: si dice a ciascuna l'IP dell'altra e il multicast non 
 Deterministico, e indipendente da come è configurato l'AP. Prerequisito: gli **IP fissi** di 11.3.
 (Più il solito `ROS_DOMAIN_ID` uguale sulle due macchine.)
 
-### 11.6 Da dove ripartire
+### 11.7 Robot sulla rete privata (⏳ DA FARE — prossimo passo)
 
-Aprire l'interfaccia web del RUT241 e fare 11.3 (sottorete, SSID, riservazioni), poi il cavo
-Ethernet, poi 11.5 (file di config CycloneDDS sulle due macchine), poi 11.4 se si vuole internet.
+Il robot è **headless**: se si sbaglia la configurazione WiFi diventa muto e si finisce a
+smontare la SD. Quindi la regola è: **non si tocca la connessione di casa, se ne AGGIUNGE una
+seconda.** NetworkManager tiene più profili e sceglie per priorità: si dà ad `AIRA-LINK`
+priorità più alta, e **se il RUT241 è spento il robot torna da solo sulla WiFi di casa** —
+rete di sicurezza automatica.
+
+Conseguenze da mettere in conto quando il robot è sulla rete privata:
+- **non lo raggiungi più direttamente dal PC Windows** (sta su `192.168.1.x`, il robot su
+  `192.168.10.x`) → si passa dal Pi controller con **ProxyJump** in `~/.ssh/config`;
+- **niente internet sul robot** (`git pull`/`apt`) finché non si fa il WiFi-as-WAN (11.4).
+
+### 11.8 Da dove ripartire
+
+Fatto: 11.3 (sottorete + controller statico). Poi: **11.7** (robot), poi **11.5** (config
+CycloneDDS sulle due macchine), poi **11.4** se si vuole internet sulla rete privata.
