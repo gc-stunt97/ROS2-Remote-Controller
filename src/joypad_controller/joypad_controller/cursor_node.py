@@ -4,8 +4,17 @@
 Sottoscrive i topic che pubblica gia' `joy_node` e li traduce nei movimenti di un
 **mouse virtuale** creato via uinput:
 - `<stick>_joystick_data` (Point): x/y -> cursore, z (yaw) -> rotella
-- `<stick>_button`        (Bool) : tastino in cima allo stick -> click SINISTRO
+- `<stick>_button`        (Bool) : tastino in cima allo stick -> click (vedi sotto)
 - `button_1`              (Bool) : -> click DESTRO (si disattiva con right_click_topic:="")
+
+IL TASTINO DELLO STICK, come il touch di un telefono:
+- tocchi e rilasci            -> click SINISTRO
+- tieni premuto e MUOVI       -> trascinamento (drag)
+- tieni premuto e STAI FERMO  -> click DESTRO   (long press, default 0.5 s)
+Il prezzo, inevitabile: per capire quale dei tre e', il click sinistro deve
+partire al RILASCIO e non alla pressione -- esattamente come sul telefono, dove
+infatti non se ne accorge nessuno. Con `long_press_time:=0.0` si torna al
+comportamento diretto (click alla pressione, niente tasto destro dal tastino).
 
 Perche' uinput e non "simulare i click dentro la GUI": il dispositivo lo crea il
 **kernel**, quindi lo vedono TUTTE le applicazioni (desktop, RViz, browser, la
@@ -75,6 +84,9 @@ class CursorNode(Node):
         self.declare_parameter("click_freeze", 0.12)      # s di cursore fermo dopo un click
         self.declare_parameter("data_timeout", 0.5)       # s senza dati -> stop
         self.declare_parameter("right_click_topic", "button_1")  # "" = disattivato
+        # Tenuta ferma oltre questo tempo = click destro. 0 = disattiva (click
+        # diretto alla pressione, come prima).
+        self.declare_parameter("long_press_time", 0.5)
 
         g = self.get_parameter
         self._stick = str(g("stick").value)
@@ -88,6 +100,7 @@ class CursorNode(Node):
         self._invert_scroll = bool(g("invert_scroll").value)
         self._click_freeze = float(g("click_freeze").value)
         self._timeout = float(g("data_timeout").value)
+        self._long_press_time = float(g("long_press_time").value)
         right_click_topic = str(g("right_click_topic").value)
 
         if self._stick not in ("right", "left"):
@@ -118,7 +131,11 @@ class CursorNode(Node):
         # --- stato ------------------------------------------------------------
         self._x = self._y = self._z = 0.0
         self._acc_x = self._acc_y = self._acc_scroll = 0.0
-        self._btn_state = {}
+        self._keys_down = {}          # code -> premuto?  (per non lasciare tasti giu')
+        self._btn_raw = False         # ultimo stato grezzo del tastino stick
+        self._b1_raw = False          # ultimo stato grezzo di button_1
+        self._press_state = "idle"    # idle | pending | drag | long
+        self._press_since = 0.0
         self._freeze_until = 0.0
         now = time.monotonic()
         self._last_msg = 0.0      # 0 = mai ricevuto: il watchdog parte "fermo"
@@ -137,9 +154,11 @@ class CursorNode(Node):
 
         self.get_logger().info(
             f"cursor_node avviato: stick={self._stick}, speed={self._speed} px/s, "
-            f"deadzone={self._deadzone}, expo={self._expo}, rate={self._rate} Hz"
-            + (f", click destro da '{right_click_topic}'" if right_click_topic
-               else ", click destro disattivato")
+            f"deadzone={self._deadzone}, expo={self._expo}, rate={self._rate} Hz, "
+            + (f"long press {self._long_press_time}s -> tasto destro"
+               if self._long_press_time > 0 else "long press disattivato")
+            + (f", click destro anche da '{right_click_topic}'" if right_click_topic
+               else "")
         )
 
     # --- callback -------------------------------------------------------------
@@ -148,22 +167,77 @@ class CursorNode(Node):
         self._last_msg = time.monotonic()
 
     def _on_left_click(self, msg: Bool):
-        self._set_button(ecodes.BTN_LEFT, bool(msg.data))
-
-    def _on_right_click(self, msg: Bool):
-        self._set_button(ecodes.BTN_RIGHT, bool(msg.data))
-
-    def _set_button(self, code: int, pressed: bool):
-        """Emette il click solo sui FRONTI (il topic ripubblica a ~50 Hz)."""
-        if self._btn_state.get(code) == pressed:
-            return
-        self._btn_state[code] = pressed
+        """Tastino dello stick: click / drag / tasto destro, come il touch."""
+        pressed = bool(msg.data)
+        if pressed == self._btn_raw:
+            return                  # il topic ripubblica a ~50 Hz: solo i fronti
+        self._btn_raw = pressed
+        now = time.monotonic()
         # Il tastino sta in cima allo stick: premendolo lo stick si sposta sempre
         # un pelo. Congelare il cursore attorno al click evita che il puntatore
         # scivoli via proprio mentre stai cliccando.
+        self._freeze_until = now + self._click_freeze
+
+        if pressed:
+            if self._long_press_time <= 0.0:
+                self._emit_key(ecodes.BTN_LEFT, True)   # modo diretto
+                self._press_state = "drag"
+            else:
+                self._press_state = "pending"           # decide _update_press()
+                self._press_since = now
+            return
+
+        # --- rilascio ---
+        if self._press_state == "pending":
+            # Rilasciato prima di decidere: era un tocco -> click sinistro.
+            self._emit_key(ecodes.BTN_LEFT, True)
+            self._emit_key(ecodes.BTN_LEFT, False)
+        elif self._press_state == "drag":
+            self._emit_key(ecodes.BTN_LEFT, False)      # fine trascinamento
+        # "long": il click destro e' gia' partito, al rilascio non c'e' altro da fare.
+        self._press_state = "idle"
+
+    def _on_right_click(self, msg: Bool):
+        pressed = bool(msg.data)
+        if pressed == self._b1_raw:
+            return
+        self._b1_raw = pressed
         self._freeze_until = time.monotonic() + self._click_freeze
+        self._emit_key(ecodes.BTN_RIGHT, pressed)
+
+    def _emit_key(self, code: int, pressed: bool):
         self._ui.write(ecodes.EV_KEY, code, 1 if pressed else 0)
         self._ui.syn()
+        self._keys_down[code] = pressed
+
+    def _release_all(self):
+        """Rilascia tutto: non lasciare mai un tasto premuto per sempre."""
+        for code, down in list(self._keys_down.items()):
+            if down:
+                self._emit_key(code, False)
+        self._press_state = "idle"
+        self._btn_raw = False
+        self._b1_raw = False
+
+    def _update_press(self, now: float):
+        """Decide cosa sta diventando una pressione in corso: drag o tasto destro."""
+        if self._press_state != "pending":
+            return
+        # ⚠️ Durante il freeze NON si giudica il movimento: premendo il tastino lo
+        #    stick si sposta sempre un po', e senza questa attesa ogni long press
+        #    verrebbe scambiato per l'inizio di un trascinamento.
+        if now >= self._freeze_until:
+            moving = (self._shape(self._x, self._deadzone, self._expo) != 0.0
+                      or self._shape(self._y, self._deadzone, self._expo) != 0.0)
+            if moving:
+                self._emit_key(ecodes.BTN_LEFT, True)   # ti muovi: e' un drag
+                self._press_state = "drag"
+                return
+        if (now - self._press_since) >= self._long_press_time:
+            # Fermo abbastanza a lungo: tasto destro, e il rilascio non fara' nulla.
+            self._emit_key(ecodes.BTN_RIGHT, True)
+            self._emit_key(ecodes.BTN_RIGHT, False)
+            self._press_state = "long"
 
     # --- curva di risposta ----------------------------------------------------
     @staticmethod
@@ -185,9 +259,14 @@ class CursorNode(Node):
             return  # primo giro, o sospensione/salto: non integrare un dt assurdo
 
         # Watchdog: niente dati freschi -> fermo tutto e azzera gli accumuli.
+        # Rilascia anche i tasti: se la seriale muore mentre stai trascinando, un
+        # tasto premuto per sempre bloccherebbe il desktop.
         if self._last_msg == 0.0 or (now - self._last_msg) > self._timeout:
             self._acc_x = self._acc_y = self._acc_scroll = 0.0
+            self._release_all()
             return
+
+        self._update_press(now)
 
         if now < self._freeze_until:
             return
@@ -228,11 +307,7 @@ class CursorNode(Node):
     # --- ciclo di vita --------------------------------------------------------
     def destroy_node(self):
         try:
-            # Non lasciare tasti premuti se il nodo muore a meta' click.
-            for code, pressed in self._btn_state.items():
-                if pressed:
-                    self._ui.write(ecodes.EV_KEY, code, 0)
-            self._ui.syn()
+            self._release_all()   # non lasciare tasti premuti se muoio a meta' click
             self._ui.close()
         except (OSError, AttributeError):
             pass

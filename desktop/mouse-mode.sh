@@ -33,10 +33,25 @@ PAT_CURSOR='__node:=[c]ursor_node'
 PAT_JOY='__node:=[j]oystick_node_mouse'   # nome apposta diverso da quello delle plance
 
 serial_holders() {
-    # Chi tiene aperta la seriale, senza dipendere da fuser/lsof (non garantiti).
-    local real fd target pid
+    # Chi tiene aperta la seriale.
+    #
+    # ⚠️ Usa fuser: la scansione di /proc a mano (il fallback qui sotto) su questo
+    #    Pi costa ~6 SECONDI -- 244 processi per tutti i loro fd, letti da bash uno
+    #    alla volta -- e questa funzione viene chiamata in un ciclo. Era la causa
+    #    degli ~11 s che il modo mouse ci metteva a tornare dopo una plancia.
+    #    fuser fa lo stesso lavoro in 0,13 s: 50 volte piu' veloce, stesso risultato.
+    local real
     real="$(readlink -f "$SERIAL" 2>/dev/null)" || return 1
     [ -n "$real" ] || return 1
+
+    if command -v fuser >/dev/null 2>&1; then
+        fuser "$real" 2>/dev/null | tr -s ' ' '\n' | grep -v '^$' | sort -u
+        return 0
+    fi
+
+    # Fallback senza dipendenze, se un domani fuser non ci fosse: lento ma sempre
+    # meglio che non sapere chi tiene la porta.
+    local fd target pid
     for fd in /proc/[0-9]*/fd/*; do
         target="$(readlink -f "$fd" 2>/dev/null)" || continue
         if [ "$target" = "$real" ]; then
