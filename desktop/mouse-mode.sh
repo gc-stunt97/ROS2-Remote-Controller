@@ -55,8 +55,16 @@ start() {
         echo "modo mouse: gia' attivo"
         return 0
     fi
-    local holders
-    holders="$(serial_holders)"
+    # Un po' di pazienza prima di rinunciare: quando una plancia si chiude i suoi
+    # nodi ci mettono un attimo a mollare la seriale, e senza attesa lo start
+    # fallirebbe per una frazione di secondo di ritardo. Se invece la seriale e'
+    # occupata sul serio (plancia aperta), questi 3 s non cambiano l'esito.
+    local holders i
+    for i in $(seq 1 15); do
+        holders="$(serial_holders)"
+        [ -z "$holders" ] && break
+        sleep 0.2
+    done
     if [ -n "$holders" ]; then
         echo "modo mouse: NON avvio, la seriale e' gia' di qualcuno (PID: $(echo $holders | tr '\n' ' '))"
         echo "            probabilmente c'e' una plancia aperta: e' giusto cosi'."
