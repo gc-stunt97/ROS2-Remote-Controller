@@ -17,7 +17,9 @@ udev + gruppo 'input').
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, EmitEvent, RegisterEventHandler
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -61,4 +63,15 @@ def generate_launch_description():
         parameters=[{"stick": stick, "speed": speed}],
     )
 
-    return LaunchDescription(args + [joystick_node, cursor_node])
+    # Se il cursor_node muore, spegni tutto il launch -- stessa logica della
+    # plancia ("chiudo la finestra = spengo tutto"), e qui non e' cosmetica:
+    # senza, resta in piedi il joystick_node che TIENE LA SERIALE mentre il
+    # cursore e' morto. Il modo mouse diventa un guscio vuoto che occupa la porta
+    # e impedisce a una plancia di funzionare, senza muovere niente.
+    # Successo il 15/07: cursor_node morto per permessi su /dev/uinput (sessione
+    # grafica senza il gruppo 'input'), launch e joystick_node vivi lo stesso.
+    stop_on_cursor_death = RegisterEventHandler(
+        OnProcessExit(target_action=cursor_node, on_exit=[EmitEvent(event=Shutdown())])
+    )
+
+    return LaunchDescription(args + [joystick_node, cursor_node, stop_on_cursor_death])
