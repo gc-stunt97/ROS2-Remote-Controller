@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Modo Mouse
+Comment=Lo stick destro pilota il cursore di Ubuntu (si ferma da solo quando apri una plancia)
+Exec=/home/giulio/mouse-mode.sh start
+Icon=input-mouse
+Terminal=false
+Categories=Utility;

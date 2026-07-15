@@ -8,8 +8,15 @@
 #
 # Installazione (sul Pi del controller, una tantum):
 #   sudo cp udev/99-aira-uinput.rules /etc/udev/rules.d/
-#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger --action=add --subsystem-match=misc     # <-- NON basta "udevadm trigger"
 #   sudo usermod -aG input $USER
+#
+# ⚠️ GOTCHA (costato un giro il 15/07): `udevadm trigger` senza argomenti emette
+#    eventi di tipo 'change', e udev applica MODE/GROUP **solo sugli eventi 'add'**.
+#    Risultato: la regola viene letta, matcha... e /dev/uinput resta root:root, come
+#    se la regola non esistesse. Serve --action=add (o un reboot: al boot il device
+#    nasce con un 'add' vero e la regola morde da sola).
 #   # ⚠️ POI RILOGGATI (logout/login o reboot): i gruppi si leggono AL LOGIN, quindi
 #   #    la sessione grafica gia' aperta NON vede il gruppo nuovo e il nodo dara'
 #   #    ancora "Permesso negato". Una nuova sessione SSH invece lo vede subito.

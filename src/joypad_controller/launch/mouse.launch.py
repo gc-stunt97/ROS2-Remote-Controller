@@ -39,10 +39,16 @@ def generate_launch_description():
             description="Velocita' del cursore a fondo corsa, in px/s"),
     ]
 
+    # ⚠️ Il nome e' diverso da quello delle plance ("joystick_node") APPOSTA, e non
+    # e' cosmetico: i due processi avrebbero altrimenti una riga di comando
+    # identica, e "ferma il joystick del modo mouse senza toccare quello della
+    # plancia" diventerebbe impossibile (vedi desktop/mouse-mode.sh, che ci fa
+    # pkill sopra). I topic NON cambiano: sono assoluti, non dipendono dal nome
+    # del nodo -- quindi cursor_node e le GUI vedono gli stessi identici topic.
     joystick_node = Node(
         package="joypad_controller",
         executable="joypad_node",
-        name="joystick_node",
+        name="joystick_node_mouse",
         output="screen",
         parameters=[{"serial_port": serial_port}],
     )
