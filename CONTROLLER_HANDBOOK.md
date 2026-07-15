@@ -11,7 +11,7 @@
 
 ---
 
-## 0. Stato attuale — RIPRENDI DA QUI (2026-07-14, sera)
+## 0. Stato attuale — RIPRENDI DA QUI (2026-07-15)
 
 **Controller ricostruito da zero** (nuovo case stampato 3D con alloggiamento per il router
 **RUT241 a bordo**), ricablato completamente, STM32 riflashato.
@@ -21,6 +21,19 @@
 > Assi coerenti (avanti = `Y+`, destra = `X+`), tastini sui pin giusti, yaw a ±1, alias udev
 > attivo e stabile **anche dopo un riflash**. Funzionano **entrambe le plance** (RobotHex e
 > AIRA), ognuna con la sua icona sul desktop del Pi. Tutto committato e pushato.
+>
+> ## ✅ MODO MOUSE (15/07): gli stick pilotano il cursore di Ubuntu — sez. **12**
+>
+> Fuori dalle plance lo **stick destro è il puntatore** (+ scroll con lo yaw, click/drag/tasto
+> destro col tastino). Parte da solo all'accensione e **si fa da parte da solo** quando apri una
+> plancia. Verificato sul campo: preciso, e il rientro dopo una plancia è ~2 s.
+>
+> ## ⛔ MAI accettare l'aggiornamento a Ubuntu 24.04 — sez. **13**
+>
+> **ROS Humble esiste solo su 22.04.** Accettarlo = niente più ROS, plance, joystick, e si
+> porterebbe via anche il lavoro sul robot. Il popup è già comparso il 15/07: neutralizzato con
+> `Prompt=never`. Gli aggiornamenti **ordinari** (684 in attesa, sistema fermo a luglio 2023) si
+> possono fare, ma col Pi davanti e **una copia della SD prima** — mai di fretta, mai via SSH.
 >
 > ## ▶️ RIPRENDI DA QUI (2026-07-15): LA RETE, sez. **11.7** — ⚠️ **SERVE IL ROBOT ACCESO**
 >
@@ -143,7 +156,13 @@ joy_node  (nodo ROS2 "joystick_node")
       └── /button_1|2|3         (std_msgs/Bool)         3 pulsanti general purpose
       ▼
 joypad_gui  (GUI "plancia 2D" sul 7")  ← e, in futuro, il ROBOT (subscriber via WiFi)
+   oppure
+cursor_node (modo mouse, sez. 12) → mouse virtuale uinput → cursore di Ubuntu
 ```
+
+⚠️ **`joy_node` è l'unico che apre la seriale, e ce ne può essere UNO SOLO ACCESO** (plancia
+RobotHex, plancia AIRA, o modo mouse). Non è una convenzione: due lettori si rubano i byte e
+non funziona nessuno dei due, **senza dare errori**. Vedi sez. **12.3**.
 
 **Convenzione assi (decisa qui, valida end-to-end):**
 `x` = laterale (destra +), `y` = avanti (+), `z` = yaw/rotazione. Valori ~ **[-1, 1]**.
@@ -169,7 +188,16 @@ Workspace sul Pi: `~/ros2_ws/`, pacchetto `src/joypad_controller/` (ament_python
   firmware invierà `BL/BR`).
 - **`joypad.launch.py`** → avvia `joy_node` + GUI insieme. Chiudendo la GUI si spegne
   anche il nodo.
-- Eseguibili ROS2: **`joypad_node`** e **`joypad_gui_app`**.
+- **`cursor_node.py`** → **modo mouse** (sez. **12**): sottoscrive `right_joystick_data` /
+  `right_button` / `button_1` e li traduce in un **mouse virtuale uinput**. Parametri:
+  `stick` (`right`), `speed` (900 px/s), `deadzone` (0.15), `expo` (2.0), `rate` (90 Hz),
+  `invert_y`, `scroll_deadzone`/`scroll_speed`/`invert_scroll`, `click_freeze`, `data_timeout`,
+  **`long_press_time`** (0.5 s; `0` = click diretto e niente tasto destro dal tastino),
+  `right_click_topic` (`button_1`; `""` = disattivato).
+- **`mouse.launch.py`** → `joy_node` (col nome **`joystick_node_mouse`**, vedi 12.5) +
+  `cursor_node`. Se muore il cursore cade tutto, per non tenere la seriale a vuoto.
+- Eseguibili ROS2: **`joypad_node`**, **`joypad_gui_app`**, **`cursor_node`**.
+- Dipendenze di sistema: `python3-serial`, `python3-tk`, **`python3-evdev`** (modo mouse).
 
 ---
 
@@ -276,6 +304,16 @@ arduino-cli compile -b STMicroelectronics:stm32:GenF1:pnum=BLUEPILL_F103C8 \
 - **`unattended-upgrades`** (auto-updater di Ubuntu) può riempire `/boot/firmware` (piccola)
   e bloccare `apt`: se ricapita, liberare i `.bak` in `/boot/firmware` e riavviare. Si può
   disattivare l'updater per trattare il controller come appliance.
+- **⚠️ Gli stick sembrano morti, in TUTTE le app, senza un solo errore** → quasi certamente
+  **due processi stanno leggendo la stessa seriale** e si rubano i byte (Linux non lo
+  impedisce). Vedi sez. **12.3**. Controllo: `~/mouse-mode.sh status` dice chi tiene
+  `/dev/aira_controller`; deve essere **uno solo**. Causa tipica: due plance insieme, oppure il
+  testimone del modo mouse che non ha morso.
+- **"Funziona quando lo lanci da SSH, non quando parte dall'icona"** → **è un gruppo Unix**: la
+  sessione grafica è più vecchia di un `usermod -aG` e i gruppi si leggono **al login**. Serve
+  logout/reboot. Vedi sez. 12.5 punto 2.
+- **⛔ Il popup "è disponibile Ubuntu 24.04": NON accettarlo mai.** Distruggerebbe ROS Humble.
+  Vedi sez. **13** (già neutralizzato con `Prompt=never` il 15/07).
 
 ---
 
@@ -305,8 +343,10 @@ serve quando cambiano `setup.py`/`package.xml`/launch/dipendenze.
    traduce in **parametri del gait engine** del robot (vedi `ROBOTHEX_HANDBOOK.md`).
 4. **Nodo safety / EM STOP:** quick-stop software → latch su `/emergency_stop` → ODrive IDLE →
    blocca joystick → reset deliberato; + **watchdog** su heartbeat (fail-safe se cade il link).
-5. **Funzioni dei pulsanti:** `B1/B2/B3` e i tastini stick funzionano ma **non fanno niente** —
-   da decidere.
+5. **Funzioni dei pulsanti:** `B2/B3` e il tastino **sinistro** funzionano ma **non fanno
+   niente** — da decidere. ✅ Nel **modo mouse** (sez. 12) il tastino **destro** fa
+   click/drag/tasto destro e `B1` fa il tasto destro — ma **solo lì**: dentro le plance sono
+   ancora liberi. Il **fungo** resta da collegare al nodo safety (punto 4).
 6. (Poi) streaming video FPV su pipeline dedicata — vedi handbook robot sez. 6b.
    ⚠️ Attenzione all'interazione con la sez. 11.4 (radio singola del RUT241).
 
@@ -565,3 +605,155 @@ perché si provava quella sbagliata). Non è nel repo: sta sul RUT241.
    `left/right_joystick_data`? Se sì **non serve CycloneDDS** e 11.5 si riduce a "non servito".
 4. ⏳ 11.4 — WiFi-as-WAN, se si vuole internet sulla rete privata. **Nota:** serve anche per
    installare pacchetti sul robot (oggi sulla rete privata non ha internet: niente `apt`).
+
+---
+
+## 12. Modo mouse — gli stick pilotano il cursore di Ubuntu (FATTO 2026-07-15)
+
+> **✅ FUNZIONA, verificato sul campo:** cursore preciso e fine negli aggiustamenti, click,
+> trascinamento, tasto destro, e passaggio automatico da/verso le plance. Parte da solo
+> all'accensione.
+
+### 12.1 Cos'è e perché
+
+Fuori dalle plance il telecomando è un PC Ubuntu con un touchscreen: il dito va bene per
+premere un toggle, molto meno per il desktop o per **RViz**. Col modo mouse lo **stick destro
+diventa il puntatore**, e le mani non lasciano mai il telecomando.
+
+**Chi fa cosa** (default):
+
+| Comando | Azione |
+|---|---|
+| Stick destro X/Y | muove il cursore |
+| Stick destro Z (yaw) | rotella / scroll |
+| Tastino stick — tocca e rilascia | click **sinistro** |
+| Tastino stick — tieni e **muovi** | **trascinamento** |
+| Tastino stick — tieni **fermo** 0.5 s | click **DESTRO** (come il long press del touch) |
+| `B1` | click destro diretto |
+
+⚠️ Col long press attivo il click sinistro parte **al rilascio**, non alla pressione: è l'unico
+modo per distinguere i tre casi, ed è come si comporta qualsiasi touchscreen. Con
+`long_press_time:=0.0` si torna al click immediato (e si perde il tasto destro dal tastino).
+
+### 12.2 Com'è fatto
+
+`joypad_controller/cursor_node.py` sottoscrive i topic che **già esistono**
+(`right_joystick_data`, `right_button`, `button_1`) e li traduce in un **mouse virtuale creato
+via uinput**.
+
+**Perché uinput e non simulare i click dentro la GUI:** il dispositivo lo crea il **kernel**,
+quindi lo vedono *tutte* le applicazioni (desktop, RViz, browser, dashboard) **senza toccare il
+codice di nessuna**, e convive col touch (per il sistema sono due dispositivi che muovono lo
+stesso cursore). È anche il motivo per cui è **immune ai cambi di X11/Wayland**: non è roba
+grafica, è kernel.
+
+Avvio: `mouse.launch.py` = `joypad_node` + `cursor_node`. Gestione:
+**`~/mouse-mode.sh {start|stop|status}`**. Icona `Modo Mouse` + **autostart**
+(`~/.config/autostart/`).
+
+Dettagli non ovvi, documentati nel nodo: accumulo del resto frazionario (il movimento uinput è
+intero: a bassa velocità `int(0.4)` = 0 e il cursore non si muoverebbe **mai**); integrazione a
+rate fisso invece che a ogni messaggio; watchdog che ferma il cursore e rilascia i tasti se la
+seriale tace (senza, il cursore scapperebbe con l'ultimo valore ricevuto); Y invertito (sullo
+schermo Y cresce in basso, sullo stick avanti è Y+).
+
+### 12.3 ⚠️ La seriale vuole UN SOLO lettore (il cuore del problema)
+
+**Linux non impedisce a due processi di aprire la stessa seriale.** Nessun errore, nessuno
+viene respinto: **si rubano i byte a vicenda**, le righe JSON arrivano spezzate a entrambi,
+entrambi le scartano (giustamente) e **non funziona né il mouse né la plancia** — *senza un solo
+messaggio di errore*. Sembra che gli stick siano morti. È lo stesso motivo per cui non si
+lanciano due plance insieme.
+
+**Soluzione — passaggio di testimone, automatico:** gli script delle plance chiamano
+`mouse-mode.sh stop` prima di partire e `start` alla chiusura. Non c'è niente da ricordare.
+
+Il testimone è scritto così: `[ -x "$HOME/mouse-mode.sh" ] && "$HOME/mouse-mode.sh" stop` →
+**se cancelli `~/mouse-mode.sh`, le plance funzionano identiche a prima.** Il modo mouse è
+**additivo e reversibile**: per disinstallarlo, `rm ~/.config/autostart/AIRA-Mouse.desktop`.
+
+### 12.4 Installazione (una tantum) — vedi `desktop/README.md`
+
+```bash
+sudo apt install -y python3-evdev
+sudo cp udev/99-aira-uinput.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger --action=add --subsystem-match=misc   # NON basta "udevadm trigger"
+sudo usermod -aG input $USER                                # poi RILOGGATI
+cp desktop/mouse-mode.sh ~/ && chmod +x ~/mouse-mode.sh
+cp desktop/AIRA-Mouse.desktop ~/Scrivania/
+mkdir -p ~/.config/autostart && cp desktop/AIRA-Mouse.desktop ~/.config/autostart/
+```
+
+### 12.5 ⚠️ Gotcha imparati il 15/07 (ognuno è costato un giro)
+
+1. **`udevadm trigger` da solo NON applica i permessi.** Emette eventi `change`, e udev applica
+   MODE/GROUP **solo sugli `add`**. La regola viene letta, matcha... e `/dev/uinput` resta
+   `root:root` come se non esistesse. Serve `--action=add` (o un reboot).
+2. **I gruppi si leggono AL LOGIN.** Dopo `usermod -aG input`, la **sessione grafica già aperta
+   non ha il gruppo**: il `cursor_node` lanciato dall'icona muore con
+   `"/dev/uinput" cannot be opened for writing`, mentre da una sessione SSH *nuova* funziona
+   benissimo. **Sintomo micidiale: "funziona quando lo lanci tu, non quando lo lancio io".**
+   Serve logout/reboot — nessun comando aggiorna una sessione già aperta.
+3. **Uccidere un `ros2 launch` NON porta giù i suoi nodi:** restano orfani e **tengono la
+   seriale**. Vanno ammazzati per nome. Per questo il joystick del modo mouse si chiama
+   **`joystick_node_mouse`**: con lo stesso nome delle plance le righe di comando sarebbero
+   identiche e non si potrebbe fermare l'uno senza ammazzare l'altro. (I topic non cambiano:
+   sono assoluti, non dipendono dal nome del nodo.)
+4. **SIGTERM non basta:** `joypad_gui_app` (Tk + rclpy) lo ignora e resta appeso *con la seriale
+   in mano* — visti zombie sopravvissuti a due SIGTERM di fila. Serve il fallback a `-9`.
+5. **`pkill -f` matcha la PROPRIA riga di comando** e si suicida a metà lavoro. Tutti i pattern
+   usano il trucco `[x]` (`lib/[j]oypad_controller/`). Successo due volte, la seconda con `-9`.
+6. **Gli script `setup.bash` di ROS non sopravvivono a `set -u`** (leggono
+   `AMENT_TRACE_SETUP_FILES` non definita): lo script muore sul `source` senza lanciare niente.
+   Serve `set +u` attorno.
+7. **⚡ Non scansionare `/proc` a mano per sapere chi tiene un device: usa `fuser`.** La
+   scansione in bash (244 processi × tutti i loro fd) costa **6,2 s** su questo Pi; `fuser` fa
+   lo stesso in **0,13 s**, stesso identico risultato, ed era già installato. Era la causa degli
+   ~11 s che il modo mouse ci metteva a tornare dopo una plancia: ora ~2 s (di cui 1,8 è il
+   `source` di ROS, incomprimibile).
+
+### 12.6 Robustezza — cosa regge e cosa no
+
+**Regge:** `uinput` è kernel (immune a X11/Wayland e agli upgrade del desktop), la regola udev
+sta in `/etc/udev/rules.d/` (roba nostra, gli aggiornamenti non la toccano), `python3-evdev` è
+un pacchetto Debian con API ferma. Nessun conflitto col touch o con un mouse USB vero: per il
+sistema sono dispositivi diversi che muovono lo stesso cursore.
+
+**Non regge (la colla):** il testimone trova i processi **per nome**. Se si rinomina un
+pacchetto, un eseguibile o un nodo, i `pkill` **smettono di trovare qualcosa in silenzio** →
+torna la contesa della seriale, col sintomo "gli stick sembrano morti" e nessun errore, magari
+settimane dopo il rename. Se un giorno serve irrobustire: PID file o servizio systemd al posto
+dei pattern.
+
+**⚠️ Trappola strutturale:** gli script in `~` sono **copie**, non symlink, di `desktop/*.sh`.
+Il 15/07 `~/robothex-controller.sh` era una versione **più vecchia** del repo, divergente da
+chissà quando. **Ogni volta che si tocca `desktop/*.sh` bisogna ricopiarli sul Pi**, altrimenti
+il repo dice una cosa e il Pi ne fa un'altra.
+
+---
+
+## 13. ⛔ MAI aggiornare Ubuntu alla release successiva
+
+**Il Pi ha Ubuntu 22.04 + ROS Humble. ROS Humble esiste SOLO su 22.04.** Non è una preferenza:
+ogni versione di ROS è legata a una versione di Ubuntu (su 24.04 c'è ROS *Jazzy*, altra cosa).
+
+Accettare l'offerta di `24.04 LTS` **lascia orfani tutti i pacchetti `ros-humble-*`**: niente
+`colcon build`, niente plance, niente joystick, niente modo mouse — e il robot AIRA parla
+Humble, quindi si porterebbe dietro anche quel lavoro. Sarebbero giorni per ricostruire.
+
+**Fatto il 15/07** (protezione contro un click distratto sul touch — il popup era già comparso):
+
+```bash
+sudo sed -i 's/^Prompt=.*/Prompt=never/' /etc/update-manager/release-upgrades
+# verifica: deve dire  Prompt=never
+```
+
+Gli aggiornamenti di sicurezza continuano ad arrivare; sparisce solo il salto di versione.
+
+**Aggiornamenti ordinari (`apt upgrade`):** al 15/07 ce ne sono **684** in attesa e il sistema è
+fermo a **luglio 2023** (kernel `linux-image-raspi` compreso, più 3 anni di patch di Humble).
+Non sono pericolosi come il salto di release — restano dentro 22.04/Humble — ma **non si fanno
+via SSH né di fretta**: Pi davanti, tempo, e **copia dell'immagine della SD prima** (è l'unico
+vero "annulla" che esiste su una scheda SD). Mai prima di una sessione in cui serve che il
+robot funzioni.
