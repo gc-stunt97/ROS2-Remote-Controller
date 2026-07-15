@@ -22,9 +22,13 @@ ros2 launch aira_dashboard aira.launch.py
 # Qui il modo mouse e' fermo -- l'abbiamo stoppato noi sopra -- quindi si puo'
 # fare piazza pulita dei joypad_node senza rischio di ammazzare il suo.
 # I pattern usano [x] per non matchare la riga di comando di questo script stesso.
-pkill -f 'lib/joypad_controller/[j]oypad_node' 2>/dev/null
-pkill -f 'lib/joypad_controller/[j]oypad_gui_app' 2>/dev/null
-pkill -f 'lib/aira_dashboard/[a]ira' 2>/dev/null
+pkill -f 'lib/[j]oypad_controller/joypad_node' 2>/dev/null
+pkill -f 'lib/[a]ira_dashboard/' 2>/dev/null
+sleep 1
+# SIGTERM non basta sempre: le GUI (Tk + rclpy) a volte lo ignorano e restano
+# appese con la seriale in mano. Chi resiste se lo merita.
+pkill -9 -f 'lib/[j]oypad_controller/joypad_node' 2>/dev/null
+pkill -9 -f 'lib/[a]ira_dashboard/' 2>/dev/null
 
 # Plancia chiusa: il telecomando torna a fare da mouse.
 [ -x "$HOME/mouse-mode.sh" ] && "$HOME/mouse-mode.sh" start

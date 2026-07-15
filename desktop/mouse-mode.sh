@@ -94,9 +94,23 @@ stop() {
     # Aspetta che la seriale sia davvero libera: partire prima che l'altro l'abbia
     # mollata rimette in piedi lo stesso identico problema.
     local i
-    for i in $(seq 1 30); do   # max ~6 s
+    for i in $(seq 1 15); do   # ~3 s con le buone
         if [ -z "$(serial_holders)" ]; then
             echo "modo mouse: fermo, seriale libera"
+            return 0
+        fi
+        sleep 0.2
+    done
+
+    # ⚠️ SIGTERM non basta sempre: joypad_gui_app (Tk + rclpy) e a volte il launch
+    #    lo ignorano e restano appesi CON LA SERIALE IN MANO. Visto il 15/07:
+    #    zombie sopravvissuti a due SIGTERM di fila. Qui la gentilezza e' finita.
+    pkill -9 -f "$PAT_LAUNCH" 2>/dev/null
+    pkill -9 -f "$PAT_CURSOR" 2>/dev/null
+    pkill -9 -f "$PAT_JOY" 2>/dev/null
+    for i in $(seq 1 15); do
+        if [ -z "$(serial_holders)" ]; then
+            echo "modo mouse: fermo (ci e' voluto SIGKILL), seriale libera"
             return 0
         fi
         sleep 0.2
