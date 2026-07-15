@@ -22,10 +22,17 @@
 > attivo e stabile **anche dopo un riflash**. Funzionano **entrambe le plance** (RobotHex e
 > AIRA), ognuna con la sua icona sul desktop del Pi. Tutto committato e pushato.
 >
-> ## ▶️ PROSSIMO PASSO: LA RETE — vedi **sez. 11** (piano deciso, da implementare)
+> ## ▶️ RIPRENDI DA QUI (2026-07-15): LA RETE, sez. **11.7**
 >
-> Il RUT241 è a bordo e alimentato; manca il cavo Ethernet al Pi e tutta la configurazione.
-> La sez. 11 ha il piano completo campo per campo: **non riprogettarlo, eseguilo.**
+> Il link privato RUT241 **è vivo**: router su `192.168.10.1`, Pi controller cablato e statico
+> su `192.168.10.10`, internet ancora via WiFi di casa. **Il robot però non tiene la
+> connessione** alla WiFi privata: si collega, poi ripiega da solo su quella di casa.
+> **Primo comando da lanciare:** `nmcli device wifi list | grep -i ROS2Remote` sul robot →
+> guarda la **potenza del segnale**. Ipotesi principale: l'antenna del RUT241 è soffocata dentro
+> il case. Il router non c'entra (risponde al ping sul cavo).
+>
+> Il **test del discovery DDS non è mai stato eseguito**: vedi 11.8 punto 3 — probabilmente
+> non serve nessuna configurazione, ma va provato.
 
 **Fatto in questa sessione (2026-07-14, sera):**
 - **RISOLTO il blocco USB** che bloccava tutto: la Blue Pill non enumerava (`descriptor read
@@ -330,11 +337,23 @@ la base mobile **AIRA** (repo `gc-stunt97/AIRA_Robot`). Cambia solo la GUI che g
 
 | Cosa | Indirizzo | Come |
 |---|---|---|
-| **Rete di casa** | `192.168.1.0/24`, gateway `192.168.1.1` | DHCP |
+| **Rete di casa** | `192.168.1.0/24`, gateway `192.168.1.1` | DHCP. SSID `Linkem_84AB80` |
 | **RUT241 (rete privata)** | `192.168.10.1` | LAN spostata a mano dal default |
+| **WiFi privata** | SSID **`ROS2Remote`** | password: **non in repo**, chiedere a Giulio |
 | **Pi controller — `eth0`** | **`192.168.10.10`** | **statico** (MAC `e4:5f:01:7e:4d:43`) |
 | **Pi controller — `wlan0`** | `192.168.1.127` | DHCP di casa → internet |
-| **Robot — WiFi** | **`192.168.10.20`** | ⏳ da fare, sez. 11.7 |
+| **Robot AIRA — WiFi privata** | **`192.168.10.20`** | statico, profilo `ROS2Remote` ⚠️ instabile, 11.7 |
+| **Robot AIRA — WiFi di casa** | `192.168.1.234` | DHCP, profilo `Linkem_84AB80` (fallback) |
+| **RobotHex** | `192.168.10.21` | riservato, non ancora fatto |
+
+`ROS_DOMAIN_ID` sul controller = **vuoto (= 0)**. Da verificare che il robot dica lo stesso.
+
+**Accesso da Windows** (`~/.ssh/config`, già configurato): `controller` → `192.168.1.127`;
+`robot` → `192.168.10.20` **via ProxyJump dal controller**; `robot-casa` → `192.168.1.234`
+(quando il robot ripiega sulla WiFi di casa).
+⚠️ **Non usare i nomi `.local` da questo PC Windows:** `Controller.local` e `Robot.local`
+risolvono entrambi a **`127.0.0.2`** (VS Code finisce su sé stesso e la connessione fallisce).
+Qualcosa intercetta l'mDNS — sospetto l'OpenVPN installato. Usare gli host del config SSH.
 
 ⚠️ **Il RUT241 di fabbrica sta su `192.168.1.1` — lo stesso indirizzo del router di casa.**
 È la prima cosa da cambiare, prima di collegare qualsiasi cosa: il 14/07 il cavo è stato
@@ -438,20 +457,57 @@ peer unicast espliciti**: si dice a ciascuna l'IP dell'altra e il multicast non 
 Deterministico, e indipendente da come è configurato l'AP. Prerequisito: gli **IP fissi** di 11.3.
 (Più il solito `ROS_DOMAIN_ID` uguale sulle due macchine.)
 
-### 11.7 Robot sulla rete privata (⏳ DA FARE — prossimo passo)
+### 11.7 Robot sulla rete privata — ⚠️ FATTO MA INSTABILE (blocco attuale)
 
-Il robot è **headless**: se si sbaglia la configurazione WiFi diventa muto e si finisce a
-smontare la SD. Quindi la regola è: **non si tocca la connessione di casa, se ne AGGIUNGE una
-seconda.** NetworkManager tiene più profili e sceglie per priorità: si dà ad `AIRA-LINK`
-priorità più alta, e **se il RUT241 è spento il robot torna da solo sulla WiFi di casa** —
-rete di sicurezza automatica.
+Il profilo è configurato e **ha funzionato** (SSH dal controller a `192.168.10.20` riuscito),
+ma **il robot non tiene la connessione**: dopo qualche minuto è ripiegato da solo sulla WiFi
+di casa. **Questo è il punto da cui ripartire.**
 
-Conseguenze da mettere in conto quando il robot è sulla rete privata:
-- **non lo raggiungi più direttamente dal PC Windows** (sta su `192.168.1.x`, il robot su
-  `192.168.10.x`) → si passa dal Pi controller con **ProxyJump** in `~/.ssh/config`;
-- **niente internet sul robot** (`git pull`/`apt`) finché non si fa il WiFi-as-WAN (11.4).
+Configurazione già applicata sul robot (non serve rifarla):
+
+```bash
+sudo nmcli connection add \
+  type wifi con-name ROS2Remote ifname wlan0 ssid ROS2Remote \
+  wifi-sec.key-mgmt wpa-psk wifi-sec.psk '<password>' \
+  ipv4.method manual ipv4.addresses 192.168.10.20/24 \
+  ipv4.gateway "" ipv4.dns "" ipv4.never-default yes \
+  connection.autoconnect yes connection.autoconnect-priority 10
+```
+
+**✅ La rete di sicurezza funziona, verificato sul campo.** Il robot è **headless**: sbagliare
+la sua WiFi significa perderlo. Per questo si è **AGGIUNTO** il profilo senza toccare quello di
+casa (`Linkem_84AB80`, priorità 0 contro 10). Quando `ROS2Remote` è caduta, NetworkManager è
+tornato da solo a casa e il robot è ricomparso a `192.168.1.234`. **Regola di risalita: spegni
+il RUT241 e il robot torna a casa.** Non togliere mai il profilo `Linkem_84AB80`.
+
+Note: `sudo nmcli connection up ROS2Remote` **uccide la sessione SSH** da cui lo lanci (il robot
+cambia rete sotto i piedi) → lanciarlo con `sudo nohup ... &` così sopravvive alla morte di SSH.
+La password ha un `!`: **apici singoli obbligatori**, tra virgolette doppie bash fa l'espansione
+della cronologia e la storpia.
+
+**⏳ DA FARE — diagnosi della caduta.** Il router NON è il problema: risponde al ping dal
+controller sul cavo, quindi powerbank e boost DC-DC sono a posto. È la **radio**. Comandi:
+
+```bash
+nmcli device wifi list | grep -i ROS2Remote        # <- POTENZA DEL SEGNALE: e' il numero chiave
+journalctl -u NetworkManager --since "20 min ago" | grep -i -E 'ROS2Remote|wlan0|disconnect|assoc' | tail -25
+```
+
+Sotto il 40-50% di segnale siamo in zona rossa e nessuna configurazione software salva niente.
+
+> **Ipotesi principale (da verificare per prima): l'antenna del RUT241 è chiusa nel case.**
+> Il router sta dentro il case stampato 3D del telecomando, accanto a powerbank e Raspberry —
+> cioè con roba metallica addosso. Se la portata reale è molto peggiore della nominale, **la
+> soluzione non è software**: antenna esterna, riposizionamento, o ripensare l'alloggiamento.
 
 ### 11.8 Da dove ripartire
 
-Fatto: 11.3 (sottorete + controller statico). Poi: **11.7** (robot), poi **11.5** (config
-CycloneDDS sulle due macchine), poi **11.4** se si vuole internet sulla rete privata.
+1. ✅ 11.3 — sottorete del router + controller statico sul cavo. **Fatto e verificato.**
+2. ⚠️ **11.7 — il robot non tiene la connessione. PARTI DA QUI:** misura il segnale.
+3. ⏳ **Test discovery DDS — mai eseguito**, il robot è caduto prima. Vedi 11.5: **provare
+   PRIMA se serve davvero.** La trappola del multicast riguarda i client WiFi *tra loro*, ma
+   qui il robot è in WiFi e il controller sul cavo, e il bridge del router di solito passa.
+   Test: plancia AIRA sul controller, e sul robot `ros2 topic list` → si vedono
+   `left/right_joystick_data`? Se sì **non serve CycloneDDS** e 11.5 si riduce a "non servito".
+4. ⏳ 11.4 — WiFi-as-WAN, se si vuole internet sulla rete privata. **Nota:** serve anche per
+   installare pacchetti sul robot (oggi sulla rete privata non ha internet: niente `apt`).
