@@ -62,8 +62,13 @@ start() {
         echo "            probabilmente c'e' una plancia aperta: e' giusto cosi'."
         return 1
     fi
+    # ⚠️ set +u attorno al source: gli script setup.bash di ROS leggono variabili
+    #    non ancora definite (AMENT_TRACE_SETUP_FILES & co.), quindi con "set -u"
+    #    attivo esplodono e lo script muore prima di lanciare qualsiasi cosa.
+    set +u
     source /opt/ros/humble/setup.bash
     source "$HOME/ros2_ws/install/setup.bash"
+    set -u
     # setsid: lo stacca dal terminale, cosi' sopravvive alla chiusura della shell
     # o della sessione SSH da cui e' stato lanciato.
     setsid nohup ros2 launch joypad_controller mouse.launch.py >"$LOG" 2>&1 </dev/null &
