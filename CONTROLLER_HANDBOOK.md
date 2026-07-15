@@ -22,14 +22,19 @@
 > attivo e stabile **anche dopo un riflash**. Funzionano **entrambe le plance** (RobotHex e
 > AIRA), ognuna con la sua icona sul desktop del Pi. Tutto committato e pushato.
 >
-> ## ▶️ RIPRENDI DA QUI (2026-07-15): LA RETE, sez. **11.7**
+> ## ▶️ RIPRENDI DA QUI (2026-07-15): LA RETE, sez. **11.7** — ⚠️ **SERVE IL ROBOT ACCESO**
 >
 > Il link privato RUT241 **è vivo**: router su `192.168.10.1`, Pi controller cablato e statico
-> su `192.168.10.10`, internet ancora via WiFi di casa. **Il robot però non tiene la
-> connessione** alla WiFi privata: si collega, poi ripiega da solo su quella di casa.
-> **Primo comando da lanciare:** `nmcli device wifi list | grep -i ROS2Remote` sul robot →
-> guarda la **potenza del segnale**. Ipotesi principale: l'antenna del RUT241 è soffocata dentro
-> il case. Il router non c'entra (risponde al ping sul cavo).
+> su `192.168.10.10`, AP `ROS2Remote` funzionante (col telefono agganciato si apre la dashboard).
+> **Il robot però non tiene la connessione**: si collega, poi ripiega da solo su quella di casa.
+> **Primo comando:** `iw wlan0 get power_save` **sul robot** → se è `on` è il sospettato numero
+> uno (il Raspberry addormenta la radio di default: spiega il "dopo qualche minuto", ed è gratis).
+> Poi `nmcli device wifi list | grep -i ROS2Remote` **dal robot** — la potenza che conta è quella
+> vista da lui.
+>
+> ⚠️ **Antenna nel case, connettore sbagliato e "preferisce casa perché più forte" sono ESCLUSI**
+> (15/07, sez. 11.7.1): non ripartire da lì. **E non si diagnostica senza il robot:** chi cade è
+> lui, misurare il router da un altro dispositivo dice solo se il router è sano.
 >
 > Il **test del discovery DDS non è mai stato eseguito**: vedi 11.8 punto 3 — probabilmente
 > non serve nessuna configurazione, ma va provato.
@@ -495,15 +500,64 @@ journalctl -u NetworkManager --since "20 min ago" | grep -i -E 'ROS2Remote|wlan0
 
 Sotto il 40-50% di segnale siamo in zona rossa e nessuna configurazione software salva niente.
 
-> **Ipotesi principale (da verificare per prima): l'antenna del RUT241 è chiusa nel case.**
-> Il router sta dentro il case stampato 3D del telecomando, accanto a powerbank e Raspberry —
-> cioè con roba metallica addosso. Se la portata reale è molto peggiore della nominale, **la
-> soluzione non è software**: antenna esterna, riposizionamento, o ripensare l'alloggiamento.
+#### 11.7.1 Ipotesi ESCLUSE (2026-07-15, sessione senza robot — non ripercorrerle)
+
+- ❌ **"L'antenna del RUT241 è soffocata nel case."** Era l'ipotesi principale: **è FALSA.**
+  Il pannellino frontale del router è stato rimosso e il RUT241 è avvitato **al lato del case**,
+  con i **connettori originali che sporgono fuori**. Niente prolunghe coassiali (quindi niente
+  perdite di cavo, niente connettori aggiunti). **L'antenna è in aria libera, fuori dal case.**
+- ❌ **"L'antenna è avvitata sul connettore sbagliato (WiFi nudo)."** Non è possibile confonderli:
+  sul RUT241 la porta **WiFi è l'unica col pin maschio** ("pirulino") e le due **LTE hanno il foro**
+  (RP-SMA vs SMA: invertono il genere del pin, non la filettatura). L'antenna WiFi ha il foro →
+  **fa contatto solo sulla porta WiFi**. Verificato a vista. Le antenne LTE non sono montate.
+- ❌ **"Il robot preferisce la WiFi di casa perché è più forte."** **NetworkManager non fa
+  'l'erba del vicino':** da connesso non rivaluta le alternative. `autoconnect-priority` pesa
+  **solo nel momento della scelta**, cioè quando non è attaccato a niente. → **Il fallback su
+  `Linkem_84AB80` non è la causa, è la conseguenza:** il robot è tornato a casa *perché
+  ROS2Remote gli è caduta*. **La domanda giusta è "perché cade la privata", non "perché sceglie
+  casa".**
+- ❌ **"Il RUT241 trasmette a potenza ridotta."** **L'AP è sano:** da PC **associato** a 1 m il
+  segnale è **99%**, fondo scala, con DHCP, ping e internet a posto in contemporanea.
+  ⚠️ **Lezione sulla misura:** lo stesso AP, misurato in **scansione passiva** (PC non
+  associato), dava **90%** e sembrava fiacco — perché scansionando la scheda saltella tra i
+  canali e prende un beacon al volo. **La scansione passiva è pessimista: non usarla per
+  giudicare un AP.** Il numero buono si legge **da associati**
+  (`netsh wlan show interfaces`, o `nmcli device wifi list` sul lato Linux mentre è connesso).
+
+#### 11.7.2 Piste vive, in ordine (per la prossima sessione COL ROBOT)
+
+1. ⭐ **Power save del WiFi sul Pi del robot.** Il Raspberry ha il risparmio energetico della
+   radio **attivo di default**: quando il traffico cala la radio si addormenta, e NetworkManager
+   a un certo punto conclude che l'AP non risponde più → molla e ripiega su casa. **Spiega il
+   "dopo qualche minuto" meglio di qualsiasi ipotesi hardware, ed è gratis.**
+   Check: `iw wlan0 get power_save` → se `on`, è un forte sospettato.
+   Fix: `sudo iw wlan0 set power_save off` (per renderlo persistente: `wifi.powersave = 2` in
+   un file sotto `/etc/NetworkManager/conf.d/`).
+2. **Il log del robot al momento della caduta** — vedi i comandi sopra. È l'unica cosa che dice
+   *cosa* è successo invece di *cosa potrebbe*. Con `journalctl` si vede se ha perso
+   l'associazione (radio) o se è NetworkManager ad aver deciso.
+3. **Portata reale a distanza** — l'AP è sano a 1 m (99%), ma la caduta avviene *in movimento*.
+   Da misurare **dal robot, dove sta il robot**, non dal tavolo.
+
+**Dati dell'AP (2026-07-15):** SSID `ROS2Remote`, canale **4**, WPA2-Personal/CCMP, BSSID
+`20:97:27:03:f2:a9`, 2.4 GHz. Pool DHCP dal `.100` (il PC ha preso `.158`).
+🔑 **La password WiFi è quella ORIGINALE di fabbrica, stampata sull'etichetta del router**
+(≠ password di admin — è l'inghippo che il 15/07 ha fatto perdere tempo: il PC non si connetteva
+perché si provava quella sbagliata). Non è nel repo: sta sul RUT241.
+
+> **Metodo, imparato a caro prezzo il 15/07:** chi cade è **il robot**, quindi le misure che
+> contano si fanno **dal robot**. Caratterizzare il router da un altro dispositivo dice se il
+> router è sano, **non** perché il robot molla. Senza il robot davanti, questa diagnosi non si
+> chiude: non inseguire ipotesi a distanza.
 
 ### 11.8 Da dove ripartire
 
 1. ✅ 11.3 — sottorete del router + controller statico sul cavo. **Fatto e verificato.**
-2. ⚠️ **11.7 — il robot non tiene la connessione. PARTI DA QUI:** misura il segnale.
+2. ⚠️ **11.7 — il robot non tiene la connessione. PARTI DA QUI, E SERVE IL ROBOT ACCESO.**
+   Ordine: (a) `iw wlan0 get power_save` sul robot — vedi 11.7.2 punto 1, è il candidato
+   migliore e si spegne in un comando; (b) `nmcli device wifi list | grep -i ROS2Remote`
+   **dal robot** — la potenza vista da lui è il numero che conta; (c) `journalctl` al momento
+   della caduta. **Le ipotesi di 11.7.1 sono già state escluse: non ripartire da quelle.**
 3. ⏳ **Test discovery DDS — mai eseguito**, il robot è caduto prima. Vedi 11.5: **provare
    PRIMA se serve davvero.** La trappola del multicast riguarda i client WiFi *tra loro*, ma
    qui il robot è in WiFi e il controller sul cavo, e il bridge del router di solito passa.

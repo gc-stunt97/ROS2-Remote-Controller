@@ -26,7 +26,8 @@ setup(
     entry_points={
         'console_scripts': [
             "joypad_node = joypad_controller.joy_node:main",
-            "joypad_gui_app = joypad_controller.joypad_gui:main"
+            "joypad_gui_app = joypad_controller.joypad_gui:main",
+            "cursor_node = joypad_controller.cursor_node:main"
         ],
     },
 )

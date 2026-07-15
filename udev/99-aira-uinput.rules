@@ -1,0 +1,24 @@
+# Regola udev per /dev/uinput -- serve al "modo mouse" (joypad_controller/cursor_node).
+#
+# PERCHE': uinput e' il pezzo di kernel che permette di INVENTARE un dispositivo di
+# input (qui: un mouse virtuale mosso dallo stick). Di default /dev/uinput e'
+# crw------- root:root, cioe' scrivibile solo da root -- ed e' giusto che sia
+# protetto: chi ci scrive puo' simulare qualsiasi tastiera o mouse. Questa regola
+# lo apre al gruppo 'input' invece di far girare il nodo ROS da root.
+#
+# Installazione (sul Pi del controller, una tantum):
+#   sudo cp udev/99-aira-uinput.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#   sudo usermod -aG input $USER
+#   # ⚠️ POI RILOGGATI (logout/login o reboot): i gruppi si leggono AL LOGIN, quindi
+#   #    la sessione grafica gia' aperta NON vede il gruppo nuovo e il nodo dara'
+#   #    ancora "Permesso negato". Una nuova sessione SSH invece lo vede subito.
+#   # Verifica:  ls -l /dev/uinput   ->  crw-rw---- 1 root input
+#   #            groups | grep input
+#
+# 'static_node=uinput' serve perche' uinput non e' un dispositivo che si attacca:
+# se il modulo e' compilato nel kernel (come qui sul Pi) il nodo esiste gia' al
+# boot e udev non lo "vedrebbe" comparire -- senza questa opzione i permessi non
+# verrebbero applicati fino al primo trigger manuale.
+
+KERNEL=="uinput", SUBSYSTEM=="misc", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"
