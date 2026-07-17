@@ -30,6 +30,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 import rclpy
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from geometry_msgs.msg import Point, Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool
@@ -152,6 +153,17 @@ class AiraDashboard:
 
         self._enable_cli = node.create_client(SetBool, ENABLE_SRV)
 
+        # --- TESTA: il pulsante touch pubblica /head/enable. Latched (transient_local)
+        # cosi' il bridge sul robot riceve l'ultimo stato anche se parte dopo la plancia.
+        # Il bridge/Nano lo interpretano come: ON = testa segue lo stick DX + livella;
+        # OFF = resta livellata a terra col pan centrato (fail-safe di default).
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=ReliabilityPolicy.RELIABLE)
+        self._head_enabled = False
+        self._head_tick = 0
+        self._head_pub = node.create_publisher(Bool, "/head/enable", latched)
+        self._head_pub.publish(Bool(data=False))
+
         self.root = tk.Tk()
         self.root.title("AIRA — dashboard base mobile")
         self.root.configure(bg=BG)
@@ -165,8 +177,9 @@ class AiraDashboard:
         joys = tk.Frame(left, bg=BG)
         joys.pack(side=tk.TOP)
         self._build_side(joys, "SINISTRO (guida)", "left", DOT_LEFT)
-        self._build_side(joys, "DESTRO (libero)", "right", DOT_RIGHT)
+        self._build_side(joys, "DESTRO (testa)", "right", DOT_RIGHT)
         self._build_motor_toggle(left)
+        self._build_head_toggle(left)
 
         panel = tk.Frame(main, bg=BG)
         panel.pack(side=tk.LEFT, anchor="n", padx=(16, 0))
@@ -201,6 +214,15 @@ class AiraDashboard:
             font=("TkDefaultFont", 13, "bold"), relief=tk.FLAT, height=1,
             command=self._toggle_motors)
         self._motor_btn.pack(fill=tk.X)
+
+    def _build_head_toggle(self, parent):
+        f = tk.Frame(parent, bg=BG)
+        f.pack(side=tk.TOP, fill=tk.X, pady=(8, 0), padx=4)
+        self._head_btn = tk.Button(
+            f, text="TESTA  —  livella (stick off)", bg=OFF_COL, fg=INK,
+            font=("TkDefaultFont", 13, "bold"), relief=tk.FLAT, height=1,
+            command=self._toggle_head)
+        self._head_btn.pack(fill=tk.X)
 
     def _build_panel(self, parent):
         p = tk.Frame(parent, bg=BG)
@@ -302,6 +324,17 @@ class AiraDashboard:
             self._motor_btn.configure(text="MOTORI  —  ATTIVI", bg=OK_COL)
         else:
             self._motor_btn.configure(text="MOTORI  —  SPENTI", bg=WARN_COL)
+
+    def _toggle_head(self):
+        self._head_enabled = not self._head_enabled
+        self._head_pub.publish(Bool(data=self._head_enabled))
+        self._render_head_btn()
+
+    def _render_head_btn(self):
+        if self._head_enabled:
+            self._head_btn.configure(text="TESTA  —  ATTIVA (stick dx)", bg=OK_COL)
+        else:
+            self._head_btn.configure(text="TESTA  —  livella (stick off)", bg=OFF_COL)
 
     def _toggle_topmost(self):
         self._topmost = not self._topmost
@@ -465,6 +498,11 @@ class AiraDashboard:
         self._update_telemetry()
         for pb in self._procs:
             pb.refresh()
+        # ribadisci /head/enable ogni ~10 tick (~3 Hz): heartbeat lento per un bridge
+        # che riparte, senza intasare il link (il latched copre i late-joiner).
+        self._head_tick = (self._head_tick + 1) % 10
+        if self._head_tick == 0:
+            self._head_pub.publish(Bool(data=self._head_enabled))
         self.root.after(REFRESH_MS, self._tick)
 
     def _on_close(self):
