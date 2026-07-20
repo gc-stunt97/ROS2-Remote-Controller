@@ -346,8 +346,16 @@ serve quando cambiano `setup.py`/`package.xml`/launch/dipendenze.
 3. **Integrazione col robot (il pezzo grosso):** nodo *teleop* che sottoscrive
    `right_joystick_data` (avanti = velocità, yaw = rotazione) e `left_joystick_data`, e
    traduce in **parametri del gait engine** del robot (vedi `ROBOTHEX_HANDBOOK.md`).
-4. **Nodo safety / EM STOP:** quick-stop software → latch su `/emergency_stop` → ODrive IDLE →
-   blocca joystick → reset deliberato; + **watchdog** su heartbeat (fail-safe se cade il link).
+4. **EM STOP — ✅ fatto lato AIRA il 20/07/2026** (repo `AIRA_Robot`, pacchetto **`aira_safety`**):
+   **non** un nodo safety centrale e **non** un kill dei processi, ma una **convenzione**: ogni
+   nodo che comanda attuatori usa `EStopGate` e si ferma da sé. Innestato in `odrive_node`
+   (fungo premuto → assi **IDLE**; vince sul servizio `enable_motors`; al rilascio non riparte
+   finché il comando non torna a zero). ⚠️ **Qui nel controller è cambiato il QoS di
+   `/emergency_stop`: reliable + `transient_local`** (il fungo è a **ritenuta**, chi si iscrive
+   dopo deve ereditare "premuto"). **Publisher e subscriber devono combaciare, o passano ZERO
+   messaggi.** ⏳ Restano: il gate in `aira_head`/`aira_body`, il **watchdog su heartbeat**
+   (fail-safe se cade il link — è una cosa distinta dal fungo) e la **prova sul robot**.
+   ⚠️ Non è una catena di sicurezza: è software e viaggia in WiFi.
 5. **Funzioni dei pulsanti:** il tastino **sinistro** funziona ma **non fa niente** — da
    decidere. ✅ Nel **modo mouse** (sez. 12) il tastino **destro** fa click/drag/tasto destro e
    `B1/B2/B3` fanno **freccia su / invio / freccia giù** (per usare un terminale sul 7" senza
