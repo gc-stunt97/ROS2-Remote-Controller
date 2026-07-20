@@ -31,6 +31,7 @@ import serial
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy)
 from geometry_msgs.msg import Point
 from std_msgs.msg import Bool
 
@@ -57,7 +58,19 @@ class JoystickNode(Node):
         self._pub_right = self.create_publisher(Point, "right_joystick_data", 10)
         self._pub_btn_left = self.create_publisher(Bool, "left_button", 10)
         self._pub_btn_right = self.create_publisher(Bool, "right_button", 10)
-        self._pub_estop = self.create_publisher(Bool, "emergency_stop", 10)
+        # ⚠️ L'EM STOP ha un QoS DIVERSO dagli altri: reliable + TRANSIENT_LOCAL.
+        # Il fungo e' un latch meccanico (resta premuto finche' non lo ruoti), quindi
+        # un nodo del robot lanciato DOPO la pressione deve poter ereditare "premuto"
+        # invece di partire libero — ed e' esattamente cio' che fa la durability.
+        # Deve combaciare con `aira_safety.estop.ESTOP_QOS` lato robot: QoS
+        # incompatibili non danno "qualche messaggio perso", danno ZERO messaggi.
+        estop_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+        self._pub_estop = self.create_publisher(Bool, "emergency_stop", estop_qos)
         self._pub_b1 = self.create_publisher(Bool, "button_1", 10)
         self._pub_b2 = self.create_publisher(Bool, "button_2", 10)
         self._pub_b3 = self.create_publisher(Bool, "button_3", 10)
