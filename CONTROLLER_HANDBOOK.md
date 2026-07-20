@@ -121,7 +121,10 @@ pubblica su topic ROS2, e il robot (subscriber sulla stessa rete) li usa per muo
   Ogni stick ha in cima un **tastino** (`BL`/`BR`).
 - **Pulsanti aggiunti (controller 2026-07):** un **EM STOP a fungo** (`EM`) + **3 pulsanti
   general purpose** (`B1/B2/B3`). Tutti **Normally-Open verso massa**, pull-up software +
-  debounce nel firmware. Al momento **non collegati a nessuna funzione** (da decidere).
+  debounce nel firmware. **Montati il 20/07/2026.** Dentro le plance `B1/B2/B3` sono
+  **volutamente liberi** (da assegnare); **fuori** dalle plance fanno da tastiera nel modo
+  mouse (sez. 12). Il **fungo `EM` non ferma ancora niente**: è solo un topic, vedi sez. 9
+  punto 4.
 - **Router RUT241 (Teltonika) ora a bordo** nel nuovo case (era roadmap, vedi Alimentazione).
 - **STM32 "Blue Pill"** (STM32F103C8): legge i 6 assi analogici + i 6 pulsanti e manda i
   valori al Pi via **seriale USB** (alias stabile **`/dev/aira_controller`**, vedi §4).
@@ -189,11 +192,13 @@ Workspace sul Pi: `~/ros2_ws/`, pacchetto `src/joypad_controller/` (ament_python
 - **`joypad.launch.py`** → avvia `joy_node` + GUI insieme. Chiudendo la GUI si spegne
   anche il nodo.
 - **`cursor_node.py`** → **modo mouse** (sez. **12**): sottoscrive `right_joystick_data` /
-  `right_button` / `button_1` e li traduce in un **mouse virtuale uinput**. Parametri:
+  `right_button` / `button_1|2|3` e li traduce in un **mouse virtuale uinput** (+ una
+  **tastiera virtuale** per i tre general purpose). Parametri:
   `stick` (`right`), `speed` (900 px/s), `deadzone` (0.15), `expo` (2.0), `rate` (90 Hz),
   `invert_y`, `scroll_deadzone`/`scroll_speed`/`invert_scroll`, `click_freeze`, `data_timeout`,
   **`long_press_time`** (0.5 s; `0` = click diretto e niente tasto destro dal tastino),
-  `right_click_topic` (`button_1`; `""` = disattivato).
+  **`button_1|2|3_key`** (`KEY_UP` / `KEY_ENTER` / `KEY_DOWN`; `""` = spento),
+  `key_repeat_delay`/`key_repeat_period`.
 - **`mouse.launch.py`** → `joy_node` (col nome **`joystick_node_mouse`**, vedi 12.5) +
   `cursor_node`. Se muore il cursore cade tutto, per non tenere la seriale a vuoto.
 - Eseguibili ROS2: **`joypad_node`**, **`joypad_gui_app`**, **`cursor_node`**.
@@ -343,10 +348,12 @@ serve quando cambiano `setup.py`/`package.xml`/launch/dipendenze.
    traduce in **parametri del gait engine** del robot (vedi `ROBOTHEX_HANDBOOK.md`).
 4. **Nodo safety / EM STOP:** quick-stop software → latch su `/emergency_stop` → ODrive IDLE →
    blocca joystick → reset deliberato; + **watchdog** su heartbeat (fail-safe se cade il link).
-5. **Funzioni dei pulsanti:** `B2/B3` e il tastino **sinistro** funzionano ma **non fanno
-   niente** — da decidere. ✅ Nel **modo mouse** (sez. 12) il tastino **destro** fa
-   click/drag/tasto destro e `B1` fa il tasto destro — ma **solo lì**: dentro le plance sono
-   ancora liberi. Il **fungo** resta da collegare al nodo safety (punto 4).
+5. **Funzioni dei pulsanti:** il tastino **sinistro** funziona ma **non fa niente** — da
+   decidere. ✅ Nel **modo mouse** (sez. 12) il tastino **destro** fa click/drag/tasto destro e
+   `B1/B2/B3` fanno **freccia su / invio / freccia giù** (per usare un terminale sul 7" senza
+   tastiera) — ma **solo lì**: **dentro le plance i tre general purpose restano liberi**, ed è
+   una scelta, non un residuo: sono riservati a funzioni del robot da decidere.
+   Il **fungo** resta da collegare al nodo safety (punto 4).
 6. (Poi) streaming video FPV su pipeline dedicata — vedi handbook robot sez. 6b.
    ⚠️ Attenzione all'interazione con la sez. 11.4 (radio singola del RUT241).
 
@@ -629,7 +636,24 @@ diventa il puntatore**, e le mani non lasciano mai il telecomando.
 | Tastino stick — tocca e rilascia | click **sinistro** |
 | Tastino stick — tieni e **muovi** | **trascinamento** |
 | Tastino stick — tieni **fermo** 0.5 s | click **DESTRO** (come il long press del touch) |
-| `B1` | click destro diretto |
+| `B1` / `B2` / `B3` | **freccia su** / **INVIO** / **freccia giù** (tastiera) |
+
+**I tre general purpose = tastiera, e solo qui (2026-07-20).** Il telecomando non ha una
+tastiera: con su/giù/invio si naviga la **cronologia di un terminale** aperto sul 7" e si
+lancia il comando — che è ciò che rende il modo mouse autosufficiente. La mappatura vive in
+`cursor_node`, che gira **solo fuori dalle plance**: dentro le plance `B1/B2/B3` restano
+**liberi e non assegnati**, riservati a funzioni del robot da decidere.
+Sono parametri (`button_N_key`, nomi evdev `KEY_*`, `""` = spento): se un pulsante risulta
+nel posto sbagliato **si scambia il default**, non si tocca la logica. Tenendo premuto parte
+l'**autorepeat del kernel** (`key_repeat_delay` 500 ms / `key_repeat_period` 120 ms).
+📌 I tasti escono da un **secondo device uinput** ("AIRA controller keyboard"), separato dal
+mouse: libinput classifica un device dalle sue capacità, e un puntatore che dichiara anche
+`KEY_UP` è un ibrido trattato male da alcune configurazioni. Due device = un mouse e una
+tastiera, entrambi indiscutibili.
+❌ **Ritirato: `B1` non fa più il click destro.** Era un default messo di mia iniziativa quando
+è nato il modo mouse, mai chiesto; con i pulsanti non ancora montati non si era mai visto, ed
+è saltato fuori il 20/07 al primo montaggio. Il tasto destro resta sul **long press** del
+tastino, che basta.
 
 ⚠️ Col long press attivo il click sinistro parte **al rilascio**, non alla pressione: è l'unico
 modo per distinguere i tre casi, ed è come si comporta qualsiasi touchscreen. Con
@@ -638,8 +662,8 @@ modo per distinguere i tre casi, ed è come si comporta qualsiasi touchscreen. C
 ### 12.2 Com'è fatto
 
 `joypad_controller/cursor_node.py` sottoscrive i topic che **già esistono**
-(`right_joystick_data`, `right_button`, `button_1`) e li traduce in un **mouse virtuale creato
-via uinput**.
+(`right_joystick_data`, `right_button`, `button_1|2|3`) e li traduce in un **mouse virtuale
+creato via uinput** (più una **tastiera virtuale** per i tre general purpose).
 
 **Perché uinput e non simulare i click dentro la GUI:** il dispositivo lo crea il **kernel**,
 quindi lo vedono *tutte* le applicazioni (desktop, RViz, browser, dashboard) **senza toccare il

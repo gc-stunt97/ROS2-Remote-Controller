@@ -5,7 +5,17 @@ Sottoscrive i topic che pubblica gia' `joy_node` e li traduce nei movimenti di u
 **mouse virtuale** creato via uinput:
 - `<stick>_joystick_data` (Point): x/y -> cursore, z (yaw) -> rotella
 - `<stick>_button`        (Bool) : tastino in cima allo stick -> click (vedi sotto)
-- `button_1`              (Bool) : -> click DESTRO (si disattiva con right_click_topic:="")
+- `button_1/2/3`          (Bool) : -> TASTI DI TASTIERA (default: su / invio / giu')
+
+I TRE GENERAL PURPOSE = FRECCE + INVIO, ma SOLO QUI (2026-07-20):
+Il telecomando non ha tastiera: con freccia su/giu' e invio si naviga la
+cronologia di un terminale aperto sul 7", che e' il caso d'uso che rende il
+modo mouse davvero autosufficiente. La mappatura vive **in questo nodo**, che
+gira solo FUORI dalle plance: dentro le plance i tre pulsanti restano
+**liberi e non assegnati**, da dedicare a funzioni del robot quando si
+decideranno. Sono parametri (`button_N_key`, nomi `KEY_*` di evdev): se un
+pulsante risulta nel posto sbagliato si scambia il default, senza toccare la
+logica. `""` disattiva quel pulsante.
 
 IL TASTINO DELLO STICK, come il touch di un telefono:
 - tocchi e rilasci            -> click SINISTRO
@@ -83,7 +93,12 @@ class CursorNode(Node):
         self.declare_parameter("invert_scroll", False)
         self.declare_parameter("click_freeze", 0.12)      # s di cursore fermo dopo un click
         self.declare_parameter("data_timeout", 0.5)       # s senza dati -> stop
-        self.declare_parameter("right_click_topic", "button_1")  # "" = disattivato
+        # I 3 general purpose -> tasti di tastiera. Nomi evdev, "" = disattivato.
+        self.declare_parameter("button_1_key", "KEY_UP")
+        self.declare_parameter("button_2_key", "KEY_ENTER")
+        self.declare_parameter("button_3_key", "KEY_DOWN")
+        self.declare_parameter("key_repeat_delay", 500)    # ms prima di ripetere (0 = mai)
+        self.declare_parameter("key_repeat_period", 120)   # ms fra una ripetizione e l'altra
         # Tenuta ferma oltre questo tempo = click destro. 0 = disattiva (click
         # diretto alla pressione, come prima).
         self.declare_parameter("long_press_time", 0.5)
@@ -101,10 +116,24 @@ class CursorNode(Node):
         self._click_freeze = float(g("click_freeze").value)
         self._timeout = float(g("data_timeout").value)
         self._long_press_time = float(g("long_press_time").value)
-        right_click_topic = str(g("right_click_topic").value)
+        self._rep_delay = int(g("key_repeat_delay").value)
+        self._rep_period = int(g("key_repeat_period").value)
 
         if self._stick not in ("right", "left"):
             raise SystemExit(f"stick deve essere 'right' o 'left', non '{self._stick}'")
+
+        # topic dei general purpose -> codice tasto (risolto dal nome evdev)
+        self._key_map = {}
+        for n in (1, 2, 3):
+            name = str(g(f"button_{n}_key").value).strip()
+            if not name:
+                continue
+            code = ecodes.ecodes.get(name)
+            if code is None:
+                raise SystemExit(
+                    f"button_{n}_key: '{name}' non e' un tasto evdev noto "
+                    f"(esempi: KEY_UP, KEY_DOWN, KEY_ENTER, KEY_TAB, KEY_ESC)")
+            self._key_map[f"button_{n}"] = code
 
         # --- mouse virtuale ---------------------------------------------------
         caps = {
@@ -128,12 +157,31 @@ class CursorNode(Node):
                 "sudo tee /etc/modules-load.d/uinput.conf)"
             ) from exc
 
+        # --- tastiera virtuale: un SECONDO device, non gli stessi caps -------
+        # I tasti non si aggiungono al device del mouse apposta: libinput
+        # classifica un device dalle sue capacita', e un puntatore che dichiara
+        # anche KEY_UP e' un ibrido che alcune configurazioni trattano male.
+        # Due device distinti = un mouse e una tastiera, entrambi indiscutibili.
+        # EV_REP fa fare l'AUTOREPEAT al kernel finche' il pulsante e' giu':
+        # tenendo premuto scorri la cronologia invece di battere N volte.
+        self._kb = None
+        if self._key_map:
+            kb_caps = {ecodes.EV_KEY: sorted(set(self._key_map.values()))}
+            if self._rep_delay > 0:
+                kb_caps[ecodes.EV_REP] = [ecodes.REP_DELAY, ecodes.REP_PERIOD]
+            self._kb = UInput(kb_caps, name="AIRA controller keyboard", version=0x1)
+            if self._rep_delay > 0:
+                self._kb.write(ecodes.EV_REP, ecodes.REP_DELAY, self._rep_delay)
+                self._kb.write(ecodes.EV_REP, ecodes.REP_PERIOD, self._rep_period)
+                self._kb.syn()
+
         # --- stato ------------------------------------------------------------
         self._x = self._y = self._z = 0.0
         self._acc_x = self._acc_y = self._acc_scroll = 0.0
         self._keys_down = {}          # code -> premuto?  (per non lasciare tasti giu')
         self._btn_raw = False         # ultimo stato grezzo del tastino stick
-        self._b1_raw = False          # ultimo stato grezzo di button_1
+        self._key_raw = {}            # topic -> ultimo stato grezzo (per i fronti)
+        self._keys_kb_down = {}       # code tastiera -> premuto?
         self._press_state = "idle"    # idle | pending | drag | long
         self._press_since = 0.0
         self._freeze_until = 0.0
@@ -146,9 +194,11 @@ class CursorNode(Node):
             Point, f"{self._stick}_joystick_data", self._on_axes, 10)
         self.create_subscription(
             Bool, f"{self._stick}_button", self._on_left_click, 10)
-        if right_click_topic:
+        for topic, code in self._key_map.items():
+            # default=code: senza, la lambda catturerebbe l'ultimo code del ciclo.
             self.create_subscription(
-                Bool, right_click_topic, self._on_right_click, 10)
+                Bool, topic,
+                lambda msg, t=topic, c=code: self._on_key(t, c, msg), 10)
 
         self.create_timer(1.0 / self._rate, self._tick)
 
@@ -157,8 +207,9 @@ class CursorNode(Node):
             f"deadzone={self._deadzone}, expo={self._expo}, rate={self._rate} Hz, "
             + (f"long press {self._long_press_time}s -> tasto destro"
                if self._long_press_time > 0 else "long press disattivato")
-            + (f", click destro anche da '{right_click_topic}'" if right_click_topic
-               else "")
+            + (", tasti: " + ", ".join(
+                f"{t}->{ecodes.KEY[c]}" for t, c in sorted(self._key_map.items()))
+               if self._key_map else ", nessun tasto di tastiera")
         )
 
     # --- callback -------------------------------------------------------------
@@ -197,27 +248,42 @@ class CursorNode(Node):
         # "long": il click destro e' gia' partito, al rilascio non c'e' altro da fare.
         self._press_state = "idle"
 
-    def _on_right_click(self, msg: Bool):
+    def _on_key(self, topic: str, code: int, msg: Bool):
+        """General purpose -> tasto di tastiera, sul fronte (il topic e' a 50 Hz).
+
+        Si tiene giu' finche' il pulsante e' giu' (cosi' vale l'autorepeat del
+        kernel), quindi il rilascio DEVE arrivare: se muore la seriale ci pensa
+        il watchdog in _tick.
+        """
         pressed = bool(msg.data)
-        if pressed == self._b1_raw:
+        if pressed == self._key_raw.get(topic, False):
             return
-        self._b1_raw = pressed
-        self._freeze_until = time.monotonic() + self._click_freeze
-        self._emit_key(ecodes.BTN_RIGHT, pressed)
+        self._key_raw[topic] = pressed
+        self._emit_kb(code, pressed)
 
     def _emit_key(self, code: int, pressed: bool):
         self._ui.write(ecodes.EV_KEY, code, 1 if pressed else 0)
         self._ui.syn()
         self._keys_down[code] = pressed
 
+    def _emit_kb(self, code: int, pressed: bool):
+        if self._kb is None:
+            return
+        self._kb.write(ecodes.EV_KEY, code, 1 if pressed else 0)
+        self._kb.syn()
+        self._keys_kb_down[code] = pressed
+
     def _release_all(self):
         """Rilascia tutto: non lasciare mai un tasto premuto per sempre."""
         for code, down in list(self._keys_down.items()):
             if down:
                 self._emit_key(code, False)
+        for code, down in list(self._keys_kb_down.items()):
+            if down:
+                self._emit_kb(code, False)
         self._press_state = "idle"
         self._btn_raw = False
-        self._b1_raw = False
+        self._key_raw.clear()
 
     def _update_press(self, now: float):
         """Decide cosa sta diventando una pressione in corso: drag o tasto destro."""
@@ -309,6 +375,8 @@ class CursorNode(Node):
         try:
             self._release_all()   # non lasciare tasti premuti se muoio a meta' click
             self._ui.close()
+            if self._kb is not None:
+                self._kb.close()
         except (OSError, AttributeError):
             pass
         super().destroy_node()
