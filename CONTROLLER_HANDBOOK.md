@@ -13,6 +13,13 @@
 
 ## 0. Stato attuale — RIPRENDI DA QUI (2026-07-15)
 
+> ## ⭐ NUOVO (24/09/2026): il telecomando fa da BANCO DI PROVA dei micro di AIRA — sez. **14**
+>
+> La porta Ethernet portata fuori sul pannello (la **WAN** del RUT241) diventa la porta **dedicata
+> ai micro ESP32-P4-ETH** di AIRA: se ne attacca uno alla volta con un cavo diretto e un programma sul
+> Pi **finge di essere il mini PC** (joystick → giunti, telemetria, watchdog, log). Deciso, **non
+> ancora fatto**: la scheda non è ancora comprata. Primo passo al router: **WAN → LAN** in RutOS.
+
 **Controller ricostruito da zero** (nuovo case stampato 3D con alloggiamento per il router
 **RUT241 a bordo**), ricablato completamente, STM32 riflashato.
 
@@ -364,6 +371,8 @@ serve quando cambiano `setup.py`/`package.xml`/launch/dipendenze.
    Il **fungo** resta da collegare al nodo safety (punto 4).
 6. (Poi) streaming video FPV su pipeline dedicata — vedi handbook robot sez. 6b.
    ⚠️ Attenzione all'interazione con la sez. 11.4 (radio singola del RUT241).
+7. ⏳ **Banco dei micro AIRA** (deciso 24/09): porta del pannello dedicata + programma che simula il
+   mini PC — **sez. 14**. Si fa quando arriva la prima ESP32-P4-ETH.
 
 ---
 
@@ -405,6 +414,7 @@ la base mobile **AIRA** (repo `gc-stunt97/AIRA_Robot`). Cambia solo la GUI che g
 | **Robot AIRA — WiFi privata** | **`192.168.10.20`** | statico, profilo `ROS2Remote` ⚠️ instabile, 11.7 |
 | **Robot AIRA — WiFi di casa** | `192.168.1.234` | DHCP, profilo `Linkem_84AB80` (fallback) |
 | **RobotHex** | `192.168.10.21` | riservato, non ancora fatto |
+| **Porta del pannello** (ex **WAN** del RUT241) | micro ESP32 in DHCP dal pool `.100+` | ⏳ **da reimpostare come LAN** — sez. 14, solo per il banco micro |
 
 `ROS_DOMAIN_ID` sul controller = **vuoto (= 0)**. Da verificare che il robot dica lo stesso.
 
@@ -453,6 +463,9 @@ alimentato dalla stessa powerbank. Se c'è il telecomando, c'è la rete.
   firewalla e **il robot in WiFi non riesce a parlargli**. Sembra un guasto, è il router che fa
   il suo mestiere.
 - Pi e router sono a 10 cm dentro lo stesso case: **cablato**, sarebbe assurdo farli parlare via radio.
+- La **seconda porta** del RUT241 (la **WAN**, portata fuori con una prolunga da pannello) è dedicata
+  dal 24/09 al **banco dei micro** di AIRA → **sez. 14**. Internet non passa di lì: lo si prende dalla
+  WiFi (`wlan0`, o il WiFi-as-WAN della 11.4).
 - Il traffico robot↔controller **non esce mai dal RUT241** (entra dalla radio, esce dal cavo):
   non passa da casa nemmeno se la WiFi di casa c'è.
 
@@ -789,3 +802,76 @@ Non sono pericolosi come il salto di release — restano dentro 22.04/Humble —
 via SSH né di fretta**: Pi davanti, tempo, e **copia dell'immagine della SD prima** (è l'unico
 vero "annulla" che esiste su una scheda SD). Mai prima di una sessione in cui serve che il
 robot funzioni.
+
+---
+
+## 14. Banco dei micro AIRA — il telecomando finge di essere il mini PC (DECISO 24/09/2026)
+
+> ⚠️ **Deciso, non costruito.** La scheda (Waveshare **ESP32-P4-ETH**) non è ancora comprata. Il
+> lato robot — scheda, protocollo, slave, OTA — sta in `AIRA_HANDBOOK.md` **§14**; il banco in
+> **§14.12**; il primo cliente è il **busto** (§13.3: cardano + due tergicristalli, pitch + roll).
+
+### 14.1 Cosa serve e perché
+
+Sul robot i micro di AIRA sono **slave** del mini PC: ricevono angoli, rimandano telemetria, parlano
+**UDP + JSON** su una rete Ethernet privata. Per collaudarne uno **prima** di montarlo (o dopo, per
+cercare un guasto) serve qualcosa che faccia la parte del mini PC. È il telecomando: ha già joystick,
+schermo, fungo e un Pi con ROS.
+
+⛔ **Mai col micro collegato al mini PC.** O è sul robot o è sul banco, mai tutti e due.
+
+```
+[joystick STM32] → joy_node → [programma di banco sul Pi] → eth0 → RUT241 → porta del pannello → [ESP32]
+                                     ↑ telemetria, log, heartbeat ←──────────────────────────────┘
+```
+
+### 14.2 La porta: la WAN del RUT241 diventa una porta per i micro
+
+Il Pi sta nella **LAN** (sez. 11.2); la porta portata fuori sul pannello è quindi la **WAN** —
+controllare comunque l'etichetta sul router.
+- **Com'è oggi, non funziona:** la WAN è "il fuori" per il router. **Chiede** un indirizzo invece di
+  darlo, e c'è il firewall in mezzo → l'ESP32 resta senza indirizzo e il Pi non lo vede.
+- **Da fare una volta sola:** in RutOS impostare la **porta WAN come LAN** (il nome del menu cambia
+  con la versione del firmware). Da lì l'ESP32 attaccato riceve un `192.168.10.1xx` dal DHCP del
+  RUT241, esattamente come se fosse attaccato accanto al Pi.
+- ✅ **Internet NON passa di lì** (deciso il 24/09): il Pi lo prende dalla WiFi. Per questo la porta
+  può essere dedicata, ed è scartato l'adattatore USB-Ethernet "multifunzione".
+- ⛔ **Mai la presa Ethernet di casa in quella porta**: da LAN diventerebbero **due router che danno
+  indirizzi sulla stessa rete** (il disastro del 14/07, sez. 11.0) e la casa vedrebbe i micro, che
+  non hanno nessuna autenticazione. → etichetta sul pannello: **"solo micro"**.
+- ⛔ **Mai quella porta nello switch del robot**: stesso problema, col mini PC al posto della casa.
+- Più micro insieme al banco: uno switch piccolo sulla porta. Di norma **uno alla volta**.
+
+### 14.3 Perché il firmware non deve sapere di essere al banco
+
+Il firmware è **quello di produzione**. Funziona al banco perché segue regole che servono comunque
+sul robot (`AIRA_HANDBOOK.md` §14.12):
+1. **indirizzo via DHCP** da chi c'è dall'altra parte del cavo — il RUT241 qui, il mini PC sul robot;
+2. **il capo è chi manda l'heartbeat**: telemetria e log tornano a lui, un capo alla volta;
+3. **il micro si presenta** col suo MAC, e il programma di banco sa **da solo** chi ha davanti;
+4. nel saluto il programma dice **`banco`** (il mini PC dice `minipc`): il micro può mandare log più
+   fitti e abbassare il tetto di velocità, ⛔ ma **anello, fine-corsa e watchdog restano identici**.
+
+### 14.4 Il programma di banco
+
+Programma **a parte** rispetto alle plance, nello stesso repo, con la sua icona sul desktop.
+- ⭐ **Niente tendina per scegliere il micro** (proposta e scartata il 24/09): **è il micro a
+  presentarsi**. Il programma tiene una copia della **tabella MAC → ruolo** del mini PC e apre da solo
+  il pannello giusto (busto, braccio R, braccio L, …). Una scheda **mai registrata** compare come
+  "sconosciuta" e le si assegna il ruolo una volta sola.
+- **Una lingua, un profilo per ruolo.** Il protocollo è unico; cambiano giunti, limiti, guadagni,
+  calibrazione, mappatura degli stick e pannello di telemetria. ⭐ **I profili NON stanno in questo
+  repo**: stanno in `AIRA_Robot`, e il Pi ne tiene un **clone in sola lettura** (`git pull` per
+  aggiornarlo) → la config che il banco spinge al micro è **la stessa** del bridge del mini PC.
+- **Joystick da `joy_node`, mai dalla seriale.** La seriale ammette **un solo lettore** (sez. 12.3):
+  il programma è una **terza plancia** ed entra nel passaggio di testimone come le altre due.
+- **Fungo:** rispetta `/emergency_stop` come le plance (QoS reliable + `transient_local`, sez. 9 punto 4).
+- **Deve mostrare / permettere:**
+  - chi è collegato (MAC, ruolo, IP, versione firmware);
+  - giunti **comandati vs misurati**, uscite ai motori, stato dei fine-corsa;
+  - **età dell'heartbeat** e stato del watchdog, più un pulsante **"stacca heartbeat"** che simula il
+    cavo che cade (i motori devono fermarsi da soli);
+  - **log del micro** in una finestra (via UDP: la seriale non c'è);
+  - **flash OTA** e prova di **rollback** (`AIRA_HANDBOOK.md` §14.9).
+- **Primo pannello, il busto:** stick SX **Y → pitch**, stick DX **X → roll**. Si mandano **angoli**;
+  il mixing verso i due tergicristalli lo fa il micro, così al banco si collauda anche quello.
