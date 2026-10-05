@@ -17,8 +17,10 @@
 >
 > La porta Ethernet portata fuori sul pannello (la **WAN** del RUT241) diventa la porta **dedicata
 > ai micro ESP32-P4-ETH** di AIRA: se ne attacca uno alla volta con un cavo diretto e un programma sul
-> Pi **finge di essere il mini PC** (joystick → giunti, telemetria, watchdog, log). Deciso, **non
-> ancora fatto**: la scheda non è ancora comprata. Primo passo al router: **WAN → LAN** in RutOS.
+> Pi **finge di essere il mini PC** (joystick → giunti, telemetria, watchdog, log).
+> ✅ **05/10/2026: il programma è SCRITTO** (pacchetto `aira_bench`, icona "AIRA Banco micro") e
+> provato contro un micro finto; **mai usato con una scheda vera**. Installazione in **14.5**.
+> Resta il passo al router: **WAN → LAN** in RutOS.
 
 **Controller ricostruito da zero** (nuovo case stampato 3D con alloggiamento per il router
 **RUT241 a bordo**), ricablato completamente, STM32 riflashato.
@@ -807,7 +809,7 @@ robot funzioni.
 
 ## 14. Banco dei micro AIRA — il telecomando finge di essere il mini PC (DECISO 24/09/2026)
 
-> ⚠️ **Deciso, non costruito.** La scheda (Waveshare **ESP32-P4-ETH**) non è ancora comprata. Il
+> ✅ **Programma scritto il 05/10/2026** (sez. 14.5), mai provato con una scheda vera. Il
 > lato robot — scheda, protocollo, slave, OTA — sta in `AIRA_HANDBOOK.md` **§14**; il banco in
 > **§14.12**; il primo cliente è il **busto** (§13.3: cardano + due tergicristalli, pitch + roll).
 
@@ -875,3 +877,39 @@ Programma **a parte** rispetto alle plance, nello stesso repo, con la sua icona 
   - **flash OTA** e prova di **rollback** (`AIRA_HANDBOOK.md` §14.9).
 - **Primo pannello, il busto:** stick SX **Y → pitch**, stick DX **X → roll**. Si mandano **angoli**;
   il mixing verso i due tergicristalli lo fa il micro, così al banco si collauda anche quello.
+
+### 14.5 ✅ Il programma: `aira_bench` (05/10/2026)
+
+**Scritto e provato contro un micro FINTO** (`AIRA_Robot/tools/periph_sim.py`, stesso protocollo
+del firmware): aggancio, config, arm/disarm, comandi, watchdog. ⚠️ **Mai con una scheda vera.**
+Firmware e protocollo: `AIRA_Robot/firmware/esp32p4_slave/README.md`.
+
+**Installazione sul telecomando (una volta):**
+```bash
+sudo apt install -y python3-yaml python3-tk
+git clone https://github.com/gc-stunt97/AIRA_Robot.git ~/AIRA_Robot   # clone in SOLA LETTURA: si aggiorna con git pull
+cd ~/ros2_ws && git pull && colcon build --packages-select aira_bench && source install/setup.bash
+cp desktop/aira-bench.sh ~/aira-bench.sh && chmod +x ~/aira-bench.sh
+cp desktop/AIRA-Bench.desktop ~/Scrivania/ && chmod +x ~/Scrivania/AIRA-Bench.desktop
+gio set ~/Scrivania/AIRA-Bench.desktop metadata::trusted true
+```
+L'icona entra nel **passaggio di testimone della seriale** come le altre due plance (ferma il modo
+mouse, lo riavvia alla chiusura).
+
+**Cosa fa:**
+- ascolta gli annunci sulla **UDP 47001**. Il micro si presenta col MAC; se è in
+  `periph/roles.yaml` si aggancia da solo, altrimenti compare **SCONOSCIUTO** e un pulsante lo
+  tratta come busto **solo per questa sessione**. ⛔ **A una scheda senza ruolo non si manda nemmeno
+  l'heartbeat**;
+- diventa capo: **heartbeat 20 Hz** con `boss: banco`, spinge la config del profilo (più la
+  calibrazione locale in `~/.aira/periph/<ruolo>.yaml`), e la rispinge se il micro si riavvia;
+- **stick**: posizione → SX Y = pitch, DX X = roll; RAW → SX Y = motore A, DX Y = motore B.
+  Ampiezze nella sezione `bench:` del profilo. Senza joystick (o senza ROS) comandano gli **slider**;
+- **fungo** `/emergency_stop` (reliable + transient_local): disarma subito e blocca l'arm;
+- **stacca heartbeat**: simula il cavo che cade, il micro deve disarmarsi in 300 ms;
+- **calibrazione pot** a due pose (angolo dalla livella) → `~/.aira/periph/torso.yaml` + log con i
+  numeri **da ricopiare nel repo** (la fonte di verità resta `AIRA_Robot/periph/torso.yaml`);
+- **OTA**: scegli il `.bin`, il banco lo serve in HTTP sulla **8070** e lo manda al micro.
+
+**Senza ROS, da un portatile** (stessa rete del micro, mai insieme al mini PC):
+`python3 src/aira_bench/aira_bench/bench.py --no-ros --repo <clone di AIRA_Robot>`.

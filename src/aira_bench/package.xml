@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>aira_bench</name>
+  <version>0.0.1</version>
+  <description>Banco dei micro ESP32-P4-ETH di AIRA (CONTROLLER_HANDBOOK sez. 14): il telecomando
+    fa da capo al posto del mini PC, collauda un micro alla volta sulla porta "solo micro".</description>
+  <maintainer email="e.mancinelli@brunelleschi.ai">giulio</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>joypad_controller</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <!-- GUI: python3-tk -->
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

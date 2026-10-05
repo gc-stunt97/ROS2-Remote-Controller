@@ -37,6 +37,19 @@ chmod +x ~/Scrivania/AIRA-Controller.desktop
 gio set ~/Scrivania/AIRA-Controller.desktop metadata::trusted true
 ```
 
+### AIRA — banco dei micro (CONTROLLER_HANDBOOK sez. 14.5)
+
+```bash
+sudo apt install -y python3-yaml python3-tk
+git clone https://github.com/gc-stunt97/AIRA_Robot.git ~/AIRA_Robot   # profili dei micro, sola lettura
+cp desktop/aira-bench.sh ~/aira-bench.sh
+chmod +x ~/aira-bench.sh
+
+cp desktop/AIRA-Bench.desktop ~/Scrivania/AIRA-Bench.desktop
+chmod +x ~/Scrivania/AIRA-Bench.desktop
+gio set ~/Scrivania/AIRA-Bench.desktop metadata::trusted true
+```
+
 ### Modo mouse (stick destro -> cursore di Ubuntu)
 
 Prerequisiti **una tantum** (vedi `udev/99-aira-uinput.rules` per il perché di ognuno):

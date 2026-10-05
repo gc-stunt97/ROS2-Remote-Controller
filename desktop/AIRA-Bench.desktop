@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AIRA Banco micro
+Comment=Collauda un micro ESP32 di AIRA attaccato alla porta "solo micro"
+Exec=/home/giulio/aira-bench.sh
+Icon=applications-engineering
+Terminal=false
+Categories=Utility;
