@@ -841,7 +841,10 @@ controllare comunque l'etichetta sul router.
 - ⛔ **Mai la presa Ethernet di casa in quella porta**: da LAN diventerebbero **due router che danno
   indirizzi sulla stessa rete** (il disastro del 14/07, sez. 11.0) e la casa vedrebbe i micro, che
   non hanno nessuna autenticazione. → etichetta sul pannello: **"solo micro"**.
-- ⛔ **Mai quella porta nello switch del robot**: stesso problema, col mini PC al posto della casa.
+- ⛔ **Mai quella porta nello switch del robot MENTRE c'è collegato il mini PC**: stesso problema,
+  col mini PC al posto della casa. ✏️ **06/10:** gli switch del robot (due TSW100 PoE+) hanno **una
+  porta di uplink** che è *o* il mini PC *o* questa porta, mai entrambi → così il banco passa dagli
+  switch del robot e il micro prende il PoE (`AIRA_HANDBOOK.md` §14.14).
 - Più micro insieme al banco: uno switch piccolo sulla porta. Di norma **uno alla volta**.
 
 ### 14.3 Perché il firmware non deve sapere di essere al banco
