@@ -35,7 +35,7 @@ import socketserver
 import threading
 import time
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 try:
     import yaml
@@ -237,6 +237,7 @@ class Bench:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.log(f"[banco] profili da {self.prof.dir}"
                  + ("" if node else "  (SENZA ROS: comandano gli slider)"))
+        self.log("[banco] barre: verde = misurato, blu = target, giallo = setpoint (rampa)")
         self.log("[banco] in attesa che un micro si presenti sulla porta "
                  f"{HELLO_PORT}...")
 
@@ -251,18 +252,14 @@ class Bench:
         self.who = tk.Label(top, text="nessun micro agganciato", bg=BG, fg=FG, anchor="w",
                             font=("TkFixedFont", 10))
         self.who.pack(fill=tk.X)
-        # una riga per ogni scheda che si annuncia (si ricostruisce solo quando cambia qualcosa)
-        self.micro_frame = tk.LabelFrame(top, text="micro in rete", bg=BG, fg=FG)
-        self.micro_frame.pack(fill=tk.X, pady=(2, 0))
-        self.micro_sig = None
 
         main = tk.Frame(self.root, bg=BG)
         main.pack(fill=tk.BOTH, expand=True, padx=8)
 
         left = tk.Frame(main, bg=BG)
         left.pack(side=tk.LEFT, anchor="n")
-        self.state_lbl = tk.Label(left, text="—", bg=OFF_COL, fg=INK, width=34,
-                                  font=("TkDefaultFont", 13, "bold"))
+        self.state_lbl = tk.Label(left, text="—", bg=OFF_COL, fg=INK, width=30,
+                                  font=("TkDefaultFont", 11, "bold"))
         self.state_lbl.pack(fill=tk.X, pady=(0, 6))
 
         row = tk.Frame(left, bg=BG)
@@ -279,54 +276,78 @@ class Bench:
 
         row2 = tk.Frame(left, bg=BG)
         row2.pack(fill=tk.X, pady=4)
-        self._btn(row2, "clear fault", lambda: self.link.send({"t": "clear"})).pack(side=tk.LEFT)
-        self.hb_btn = self._btn(row2, "stacca heartbeat", self._toggle_hb)
+        self._btn(row2, "clear", lambda: self.link.send({"t": "clear"})).pack(side=tk.LEFT)
+        self.hb_btn = self._btn(row2, "stacca HB", self._toggle_hb)
         self.hb_btn.pack(side=tk.LEFT, padx=4)
-        self._btn(row2, "rimanda config", self._push_cfg).pack(side=tk.LEFT)
-        self._btn(row2, "leggi config", lambda: self.link.send({"t": "get"})).pack(side=tk.LEFT, padx=4)
+        self._btn(row2, "rimanda cfg", self._push_cfg).pack(side=tk.LEFT)
+        self._btn(row2, "leggi cfg", lambda: self.link.send({"t": "get"})).pack(side=tk.LEFT, padx=4)
 
         # barre giunti
         self.bars = {}
+        # ⚠️ lo schermo del telecomando e' 800x480 (finestra utile ~798x416): la colonna deve
+        # restare sotto ~390 px. Nomi accanto alle barre, motori affiancati, slider in una scheda.
         for j, span in (("pitch", 25.0), ("roll", 20.0)):
-            tk.Label(left, text=j.upper(), bg=BG, fg=FG, anchor="w",
-                     font=("TkDefaultFont", 10, "bold")).pack(fill=tk.X, pady=(6, 0))
-            c = tk.Canvas(left, width=320, height=26, bg=BG, highlightthickness=1,
+            r = tk.Frame(left, bg=BG)
+            r.pack(fill=tk.X, pady=(5, 0))
+            tk.Label(r, text=j.upper(), bg=BG, fg=FG, width=6, anchor="w",
+                     font=("TkDefaultFont", 9, "bold")).pack(side=tk.LEFT)
+            c = tk.Canvas(r, width=280, height=24, bg=BG, highlightthickness=1,
                           highlightbackground=GRID)
-            c.pack()
-            lbl = tk.Label(left, text="", bg=BG, fg=FG, font=("TkFixedFont", 9), anchor="w")
+            c.pack(side=tk.LEFT)
+            lbl = tk.Label(left, text="", bg=BG, fg=FG, font=("TkFixedFont", 8), anchor="w", justify="left")
             lbl.pack(fill=tk.X)
             self.bars[j] = (c, lbl, span)
-        tk.Label(left, text="verde = misurato, blu = target, giallo = setpoint (rampa)",
-                 bg=BG, fg=GRID, font=("TkFixedFont", 8)).pack(anchor="w")
 
-        tk.Label(left, text="MOTORI (duty) / CORRENTE", bg=BG, fg=FG, anchor="w",
-                 font=("TkDefaultFont", 10, "bold")).pack(fill=tk.X, pady=(8, 0))
+        r = tk.Frame(left, bg=BG)
+        r.pack(fill=tk.X, pady=(6, 0))
         self.duty_bars = {}
         for m in ("A", "B"):
-            c = tk.Canvas(left, width=320, height=18, bg=BG, highlightthickness=1,
+            tk.Label(r, text=f"mot {m}", bg=BG, fg=FG, font=("TkDefaultFont", 9, "bold")).pack(
+                side=tk.LEFT, padx=(0 if m == "A" else 6, 2))
+            c = tk.Canvas(r, width=118, height=18, bg=BG, highlightthickness=1,
                           highlightbackground=GRID)
-            c.pack(pady=1)
+            c.pack(side=tk.LEFT)
             self.duty_bars[m] = c
-        self.motor_lbl = tk.Label(left, text="", bg=BG, fg=FG, font=("TkFixedFont", 9),
+        self.motor_lbl = tk.Label(left, text="", bg=BG, fg=FG, font=("TkFixedFont", 8),
                                   anchor="w", justify="left")
         self.motor_lbl.pack(fill=tk.X)
 
+        # destra: calibrazione + OTA + log
+        st = ttk.Style(self.root)
+        st.theme_use("default")
+        st.configure("TNotebook", background=BG, borderwidth=0)
+        st.configure("TNotebook.Tab", background=BTN, foreground=FG, padding=(10, 4))
+        st.map("TNotebook.Tab", background=[("selected", GRID)])
+        self.tabs = ttk.Notebook(main)
+        self.tabs.pack(side=tk.LEFT, anchor="n", padx=(6, 0), fill=tk.BOTH, expand=True)
+        tab_log = tk.Frame(self.tabs, bg=BG)
+        self.tab_micro = tk.Frame(self.tabs, bg=BG)
+        tab_cal = tk.Frame(self.tabs, bg=BG)
+        self.tabs.add(tab_log, text="log")
+        self.tabs.add(self.tab_micro, text="micro")
+        self.tabs.add(tab_cal, text="cal / OTA")
+        tab_sl = tk.Frame(self.tabs, bg=BG)
+        self.tabs.add(tab_sl, text="slider")
+
         # slider (senza ROS o senza joystick)
-        sl = tk.LabelFrame(left, text="slider (comandano se il joystick tace)", bg=BG, fg=FG)
-        sl.pack(fill=tk.X, pady=6)
+        tk.Label(tab_sl, text="comandano solo se il joystick tace da 1 s", bg=BG, fg=GRID,
+                 font=("TkFixedFont", 8)).pack(anchor="w", pady=(4, 0))
         self.sl = {}
         for name in ("pitch / mot A", "roll / mot B"):
-            s = tk.Scale(sl, from_=-1.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL,
-                         length=300, label=name, bg=BG, fg=FG, troughcolor=BTN,
-                         highlightthickness=0)
-            s.pack()
-            self.sl[name] = s
-        self._btn(sl, "slider a zero", lambda: [s.set(0) for s in self.sl.values()]).pack(pady=2)
+            sc = tk.Scale(tab_sl, from_=-1.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL,
+                          length=360, label=name, bg=BG, fg=FG, troughcolor=BTN,
+                          highlightthickness=0)
+            sc.pack(pady=2)
+            self.sl[name] = sc
+        self._btn(tab_sl, "slider a zero",
+                  lambda: [sc.set(0) for sc in self.sl.values()]).pack(pady=4)
 
-        # destra: calibrazione + OTA + log
-        right = tk.Frame(main, bg=BG)
-        right.pack(side=tk.LEFT, anchor="n", padx=(12, 0), fill=tk.BOTH, expand=True)
-        cal = tk.LabelFrame(right, text="calibrazione pot (due pose, angolo dalla livella)",
+        # una riga per ogni scheda che si annuncia (si ricostruisce solo quando cambia qualcosa)
+        self.micro_frame = tk.Frame(self.tab_micro, bg=BG)
+        self.micro_frame.pack(fill=tk.BOTH, expand=True, pady=4)
+        self.micro_sig = None
+
+        cal = tk.LabelFrame(tab_cal, text="calibrazione pot (due pose, angolo dalla livella)",
                             bg=BG, fg=FG)
         cal.pack(fill=tk.X)
         self.cal_entries = {}
@@ -346,12 +367,12 @@ class Bench:
         self.cal_lbl.pack(fill=tk.X)
         self._btn(cal, "salva calibrazione e spingi", self._save_cal).pack(anchor="w", pady=2)
 
-        ota = tk.Frame(right, bg=BG)
+        ota = tk.Frame(tab_cal, bg=BG)
         ota.pack(fill=tk.X, pady=6)
         self._btn(ota, "OTA: scegli .bin", self._ota).pack(side=tk.LEFT)
         self._btn(ota, "riavvia micro", self._reboot).pack(side=tk.LEFT, padx=4)
 
-        self.logbox = scrolledtext.ScrolledText(right, width=70, height=26, bg=INK, fg=FG,
+        self.logbox = scrolledtext.ScrolledText(tab_log, width=47, height=20, bg=INK, fg=FG,
                                                 font=("TkFixedFont", 9))
         self.logbox.pack(fill=tk.BOTH, expand=True)
 
@@ -402,6 +423,7 @@ class Bench:
             self._attach(*live[0])
         elif live and not getattr(self, "_told_choose", False):
             self._told_choose = True
+            self.tabs.select(self.tab_micro)
             self.log(f"[banco] {len(live)} schede in rete (o una sconosciuta): scegli dalla "
                      "lista quale agganciare")
 
@@ -487,18 +509,20 @@ class Bench:
             bg = GRID if mine else BG
             row = tk.Frame(self.micro_frame, bg=bg)
             row.pack(fill=tk.X)
-            txt = (f"{(r or 'SCONOSCIUTO'):12} {m}  {h.get('ip_src', '?'):15} "
-                   f"fw {h.get('fw', '?'):8} {h.get('part', '?'):6} capo: {boss}"
-                   + ("   (assente)" if h["gone"] else ""))
-            tk.Label(row, text=txt, bg=bg, fg=fg, font=("TkFixedFont", 9),
-                     anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True)
+            line1 = f"{(r or 'SCONOSCIUTO'):12} {m}" + ("  (assente)" if h["gone"] else "")
+            line2 = (f"  {h.get('ip_src', '?'):15} fw {h.get('fw', '?')} {h.get('part', '?')}"
+                     f"  capo: {boss}")
+            tk.Label(row, text=line1 + "\n" + line2, bg=bg, fg=fg, font=("TkFixedFont", 9),
+                     anchor="w", justify="left").pack(side=tk.LEFT, fill=tk.X, expand=True)
             if mine:
                 tk.Label(row, text="AGGANCIATO", bg=OK_COL, fg=INK,
                          font=("TkDefaultFont", 9, "bold")).pack(side=tk.RIGHT, padx=2)
             elif not h["gone"]:
-                label = "aggancia" if r else "aggancia come BUSTO (solo ora)"
+                label = "aggancia" if r else "aggancia\ncome BUSTO"
                 self._btn(row, label, functools.partial(self._choose, m, r)).pack(
                     side=tk.RIGHT, padx=2)
+        live = sum(1 for _m, h, _r in ms if not h["gone"])
+        self.tabs.tab(self.tab_micro, text=f"micro ({live})")
 
     def _push_cfg(self):
         if not self.role:
@@ -538,10 +562,10 @@ class Bench:
     def _toggle_hb(self):
         self.link.hb_enabled = not self.link.hb_enabled
         if self.link.hb_enabled:
-            self.hb_btn.config(text="stacca heartbeat", bg=BTN, fg=FG)
+            self.hb_btn.config(text="stacca HB", bg=BTN, fg=FG)
             self.log("[banco] heartbeat RIATTACCATO")
         else:
-            self.hb_btn.config(text="RIATTACCA heartbeat", bg=ERR_COL, fg=INK)
+            self.hb_btn.config(text="RIATTACCA HB", bg=ERR_COL, fg=INK)
             self.log("[banco] heartbeat STACCATO: il micro deve disarmarsi da solo")
 
     def _reboot(self):
@@ -682,7 +706,7 @@ class Bench:
                 c, lbl, span = self.bars[j]
                 m, t, s = tel.get(k), tel.get(k + "t"), tel.get(k + "s")
                 self._bar(c, span, [(m, MEAS_COL, 4, 22), (t, TGT_COL, 0, 26), (s, SP_COL, 0, 26)])
-                lbl.config(text=f"mis {m:+7.2f}  target {t:+7.2f}  set {s:+7.2f}  "
+                lbl.config(text=f"mis {m:+7.2f}  target {t:+7.2f}  set {s:+7.2f}\n"
                                 f"vel {tel.get(k + 'v', 0):+6.1f}  u {tel.get('u' + k, 0):+.3f}  "
                                 f"raw {tel.get(k + 'r')}")
             for m, k in (("A", "ua"), ("B", "ub")):
