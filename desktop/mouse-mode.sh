@@ -108,9 +108,13 @@ stop() {
 
     # Aspetta che la seriale sia davvero libera: partire prima che l'altro l'abbia
     # mollata rimette in piedi lo stesso identico problema.
+    # ⚠️ Fermo = seriale libera E nessun cursor_node vivo. Il cursor_node la seriale
+    #    non la tiene: l'08/10 uno morto all'avvio (traceback) e' rimasto appeso, lo
+    #    stop vedeva la seriale libera e usciva senza SIGKILL, e lo start dopo diceva
+    #    "gia' attivo" (is_running lo trovava) -> il modo mouse non tornava piu'.
     local i
     for i in $(seq 1 15); do   # ~3 s con le buone
-        if [ -z "$(serial_holders)" ]; then
+        if [ -z "$(serial_holders)" ] && ! is_running; then
             echo "modo mouse: fermo, seriale libera"
             return 0
         fi
@@ -124,7 +128,7 @@ stop() {
     pkill -9 -f "$PAT_CURSOR" 2>/dev/null
     pkill -9 -f "$PAT_JOY" 2>/dev/null
     for i in $(seq 1 15); do
-        if [ -z "$(serial_holders)" ]; then
+        if [ -z "$(serial_holders)" ] && ! is_running; then
             echo "modo mouse: fermo (ci e' voluto SIGKILL), seriale libera"
             return 0
         fi
