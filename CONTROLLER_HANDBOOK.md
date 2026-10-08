@@ -864,6 +864,13 @@ Programma **a parte** rispetto alle plance, nello stesso repo, con la sua icona 
   presentarsi**. Il programma tiene una copia della **tabella MAC → ruolo** del mini PC e apre da solo
   il pannello giusto (busto, braccio R, braccio L, …). Una scheda **mai registrata** compare come
   "sconosciuta" e le si assegna il ruolo una volta sola.
+  ✏️ **08/10/2026: lista dei micro in rete.** Con più schede sullo switch del robot (uplink = la
+  porta "solo micro" al posto del mini PC) il banco mostra in alto **una riga per scheda** (ruolo,
+  MAC, IP, firmware, partizione, capo) con un pulsante **aggancia**. Il riconoscimento resta
+  automatico dal MAC: si sceglie solo *quale* dei presenti collaudare. **Un solo micro noto → si
+  aggancia da solo** come prima. Cambiando scheda il banco **disarma** la vecchia e smette di
+  mandarle l'heartbeat (resta senza capo = ferma). Una scheda che ha già un altro capo (mini PC)
+  compare **in rosso**: vuol dire mini PC e banco sullo stesso switch, da non fare mai.
 - **Una lingua, un profilo per ruolo.** Il protocollo è unico; cambiano giunti, limiti, guadagni,
   calibrazione, mappatura degli stick e pannello di telemetria. ⭐ **I profili NON stanno in questo
   repo**: stanno in `AIRA_Robot`, e il Pi ne tiene un **clone in sola lettura** (`git pull` per

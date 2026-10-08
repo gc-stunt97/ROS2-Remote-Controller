@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """BANCO dei micro AIRA: il telecomando finge di essere il mini PC (CONTROLLER_HANDBOOK §14).
 
-Si attacca UN micro ESP32-P4-ETH alla porta "solo micro" del pannello e questo programma:
-  - ascolta gli annunci (hello) e riconosce la scheda dal MAC (tabella `periph/roles.yaml` nel
-    clone di AIRA_Robot: niente tendina, e' il micro a presentarsi);
+Si attaccano i micro ESP32-P4-ETH alla porta "solo micro" del pannello (direttamente o tramite
+lo switch del robot, al posto del mini PC) e questo programma:
+  - ascolta gli annunci (hello) e riconosce ogni scheda dal MAC (tabella `periph/roles.yaml` nel
+    clone di AIRA_Robot: e' il micro a presentarsi). Le schede in rete stanno in una LISTA in
+    alto: con un solo micro noto si aggancia da solo, con piu' micro si sceglie quale (gli altri
+    restano senza capo = disarmati);
   - si aggancia come CAPO: heartbeat 20 Hz con boss="banco", spinge la config del PROFILO del
     ruolo (`periph/<ruolo>.yaml`, la STESSA che spingera' il mini PC);
   - stick -> giunti (busto: stick SX Y -> pitch, stick DX X -> roll), oppure modo RAW per
@@ -53,6 +56,7 @@ HELLO_PORT = 47001        # banco: annunci + telemetria + log (un socket solo)
 HB_HZ = 20
 OTA_HTTP_PORT = 8070
 JOY_TIMEOUT = 1.0         # s senza messaggi joystick -> comandano gli slider
+MICRO_GONE_S = 5.0        # s senza annunci -> la scheda in lista diventa "assente"
 
 # estetica: come le plance (catppuccin)
 BG, FG, GRID, BTN, INK = "#1e1e2e", "#cdd6f4", "#45475a", "#313244", "#11111b"
@@ -210,7 +214,6 @@ class Bench:
         self.joy = {"left": (0.0, 0.0, 0.0), "right": (0.0, 0.0, 0.0)}
         self.joy_time = 0.0
         self.capture = {}          # ("pitch","A") -> (raw, angolo)
-        self.pending_ip = None     # IP della scheda vista, prima di sapere che ruolo ha
         self.http = None
 
         self.root = tk.Tk()
@@ -245,10 +248,13 @@ class Bench:
     def _build(self):
         top = tk.Frame(self.root, bg=BG)
         top.pack(fill=tk.X, padx=8, pady=(6, 2))
-        self.who = tk.Label(top, text="nessun micro", bg=BG, fg=FG, anchor="w",
+        self.who = tk.Label(top, text="nessun micro agganciato", bg=BG, fg=FG, anchor="w",
                             font=("TkFixedFont", 10))
-        self.who.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.assign_btn = self._btn(top, "usa come BUSTO (solo ora)", self._assign_torso)
+        self.who.pack(fill=tk.X)
+        # una riga per ogni scheda che si annuncia (si ricostruisce solo quando cambia qualcosa)
+        self.micro_frame = tk.LabelFrame(top, text="micro in rete", bg=BG, fg=FG)
+        self.micro_frame.pack(fill=tk.X, pady=(2, 0))
+        self.micro_sig = None
 
         main = tk.Frame(self.root, bg=BG)
         main.pack(fill=tk.BOTH, expand=True, padx=8)
@@ -365,49 +371,134 @@ class Bench:
 
     # ------------------------------------------------------------ aggancio
     def _on_hello(self, mac, h):
-        if self.mac is None:
-            role = self.prof.roles().get(mac)
-            self.mac = mac
-            self.pending_ip = h["ip_src"]
-            if role:
-                self._attach(role)
-            else:
-                self.log(f"[banco] scheda SCONOSCIUTA {mac} ({h['ip_src']}): aggiungi "
-                         f"'\"{mac}\": torso' a periph/roles.yaml (o usa il pulsante in alto)")
-                self.assign_btn.pack(side=tk.RIGHT)
-        elif mac == self.mac:
-            self.pending_ip = h["ip_src"]
-            if self.role:
-                self.link.target_ip = h["ip_src"]
+        if mac == self.mac:
+            self.link.target_ip = h["ip_src"]
             # il micro si e' riavviato o ci ha perso: la config va rispinta
-            if self.role and h.get("boss") == "nessuno" and self.link.hb_enabled:
+            if h.get("boss") == "nessuno" and self.link.hb_enabled:
                 self.cfg_sent = False
-        self.last_hello = h
-        self._who(h)
+            self.last_hello = h
+            self._who(h)
+            return
+        if self.mac is None:
+            self._auto_attach()
+
+    def _micros(self):
+        """schede viste: [(mac, hello, ruolo o None)], prima le note, poi per ruolo e MAC."""
+        roles = self.prof.roles()
+        now = time.time()
+        with self.link.lock:
+            ms = {m: dict(h) for m, h in self.link.micros.items()}
+        out = [(m, h, roles.get(m)) for m, h in ms.items()]
+        out.sort(key=lambda x: (x[2] is None, x[2] or "", x[0]))
+        for _m, h, _r in out:
+            h["gone"] = now - h.get("seen", 0) > MICRO_GONE_S
+        return out
+
+    def _auto_attach(self):
+        """UN solo micro in rete e con ruolo noto -> ci si aggancia da soli (come al banco con
+        una scheda). Con piu' schede, o una sconosciuta, si aspetta la scelta in lista."""
+        live = [(m, h, r) for m, h, r in self._micros() if not h["gone"]]
+        if len(live) == 1 and live[0][2]:
+            self._attach(*live[0])
+        elif live and not getattr(self, "_told_choose", False):
+            self._told_choose = True
+            self.log(f"[banco] {len(live)} schede in rete (o una sconosciuta): scegli dalla "
+                     "lista quale agganciare")
 
     def _who(self, h):
         role = self.role or "SCONOSCIUTO"
-        self.who.config(text=f"{role}  MAC {h.get('mac')}  IP {h.get('ip_src')}  fw {h.get('fw')} "
-                             f"[{h.get('part')}, {h.get('img')}]  capo: {h.get('boss')}")
+        self.who.config(text=f"AGGANCIATO: {role}  MAC {h.get('mac')}  IP {h.get('ip_src')}  "
+                             f"fw {h.get('fw')} [{h.get('part')}, {h.get('img')}]  "
+                             f"capo: {h.get('boss')}")
 
-    def _assign_torso(self):
-        self.assign_btn.pack_forget()
-        self._attach("torso")
+    def _choose(self, mac, role):
+        """pulsante "aggancia" di una riga della lista."""
+        if mac == self.mac:
+            return
+        if self.mac is not None:
+            tel, age = self._tel()
+            if age < 0.5 and tel.get("st") == "armato" and not messagebox.askyesno(
+                    "Cambio micro", f"'{self.role}' e' ARMATO.\nDisarmarlo e passare all'altro?"):
+                return
+            self._detach()
+        with self.link.lock:
+            h = dict(self.link.micros.get(mac, {}))
+        if h:
+            if not role:
+                self.log(f"[banco] {mac} non e' in periph/roles.yaml: lo tratto come BUSTO solo "
+                         f"per questa sessione (aggiungi '\"{mac}\": torso' al repo)")
+            self._attach(mac, h, role or "torso")
 
-    def _attach(self, role):
+    def _detach(self):
+        """lascia il micro agganciato: disarmo, poi niente piu' heartbeat -> resta senza capo."""
+        if self.mac is None:
+            return
+        self.link.send({"t": "arm", "on": False})
+        self.log(f"[banco] lascio {self.mac} ('{self.role}'): disarmato, resta senza capo")
+        self.link.target_ip = None
+        with self.link.lock:
+            self.link.tel = {}
+            self.link.tel_time = 0.0
+        self.mac = self.role = None
+        self.cfg_sent = False
+        self.capture = {}
+        self.cal_lbl.config(text="")
+        self.who.config(text="nessun micro agganciato")
+        self.micro_sig = None
+
+    def _attach(self, mac, h, role):
         try:
             prof = self.prof.profile(role)
         except (OSError, RuntimeError) as exc:
             messagebox.showerror("Profilo", f"Non leggo il profilo '{role}':\n{exc}")
             return
+        if h.get("boss") not in (None, "nessuno", "banco"):
+            self.log(f"[banco] ⚠ {mac} ha gia' un capo ({h.get('boss')}): il mini PC e' sullo "
+                     "switch insieme al banco? Mai tutti e due (handbook §14.2)")
+        self.mac = mac
         self.role = role
         self.bench_cfg = prof.get("bench") or {}
         # solo ORA si diventa capo: a una scheda senza ruolo non si manda nemmeno l'heartbeat
-        self.link.target_ip = self.pending_ip
-        self.log(f"[banco] agganciato {self.mac} come '{role}'")
+        self.link.target_ip = h["ip_src"]
+        self.log(f"[banco] agganciato {mac} come '{role}'")
         self.cfg_sent = False
-        if getattr(self, "last_hello", None):
-            self._who(self.last_hello)
+        self.last_hello = h
+        self._who(h)
+        self.micro_sig = None
+
+    def _refresh_micros(self):
+        ms = self._micros()
+        sig = tuple((m, r, h.get("ip_src"), h.get("fw"), h.get("part"), h.get("img"),
+                     h.get("boss"), h["gone"]) for m, h, r in ms) + (self.mac,)
+        if sig == self.micro_sig:
+            return
+        self.micro_sig = sig
+        for w in self.micro_frame.winfo_children():
+            w.destroy()
+        if not ms:
+            tk.Label(self.micro_frame, text="nessuna scheda si e' ancora annunciata", bg=BG,
+                     fg=GRID, font=("TkFixedFont", 9)).pack(anchor="w")
+            return
+        for m, h, r in ms:
+            mine = m == self.mac
+            boss = h.get("boss")
+            foreign = boss not in (None, "nessuno", "banco")
+            fg = OFF_COL if h["gone"] else (ERR_COL if foreign else FG)
+            bg = GRID if mine else BG
+            row = tk.Frame(self.micro_frame, bg=bg)
+            row.pack(fill=tk.X)
+            txt = (f"{(r or 'SCONOSCIUTO'):12} {m}  {h.get('ip_src', '?'):15} "
+                   f"fw {h.get('fw', '?'):8} {h.get('part', '?'):6} capo: {boss}"
+                   + ("   (assente)" if h["gone"] else ""))
+            tk.Label(row, text=txt, bg=bg, fg=fg, font=("TkFixedFont", 9),
+                     anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True)
+            if mine:
+                tk.Label(row, text="AGGANCIATO", bg=OK_COL, fg=INK,
+                         font=("TkDefaultFont", 9, "bold")).pack(side=tk.RIGHT, padx=2)
+            elif not h["gone"]:
+                label = "aggancia" if r else "aggancia come BUSTO (solo ora)"
+                self._btn(row, label, functools.partial(self._choose, m, r)).pack(
+                    side=tk.RIGHT, padx=2)
 
     def _push_cfg(self):
         if not self.role:
@@ -566,6 +657,11 @@ class Bench:
     def _tick(self):
         if self.node is not None:
             rclpy.spin_once(self.node, timeout_sec=0.0)
+        self._ticks = getattr(self, "_ticks", 0) + 1
+        if self._ticks % 10 == 0:            # 2 Hz: alla lista basta
+            self._refresh_micros()
+            if self.mac is None:
+                self._auto_attach()
         tel, age = self._tel()
         if self.role and self.link.target_ip and not self.cfg_sent and age < 1.0:
             self._push_cfg()
