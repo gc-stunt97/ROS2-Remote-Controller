@@ -220,6 +220,9 @@ class Bench:
         self.root.title("AIRA — banco micro")
         self.root.configure(bg=BG)
         self._build()
+        # schermo intero: il telecomando ha 800x480 e la plancia ci sta giusta (08/10)
+        if not getattr(args, "windowed", False):
+            self.root.attributes("-fullscreen", True)
 
         self.link = Link(self.log)
         self.link.on_hello = lambda mac, h: self.root.after(0, self._on_hello, mac, h)
@@ -251,7 +254,11 @@ class Bench:
         top.pack(fill=tk.X, padx=8, pady=(6, 2))
         self.who = tk.Label(top, text="nessun micro agganciato", bg=BG, fg=FG, anchor="w",
                             font=("TkFixedFont", 10))
-        self.who.pack(fill=tk.X)
+        self.who.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # a schermo intero non c'e' la X della finestra (e il telecomando non ha tastiera):
+        # si chiude da qui, che passa da _on_close = disarmo prima di uscire
+        tk.Button(top, text="chiudi", command=self._on_close, bg=ERR_COL, fg=INK, relief=tk.FLAT,
+                  font=("TkDefaultFont", 9, "bold")).pack(side=tk.RIGHT)
 
         main = tk.Frame(self.root, bg=BG)
         main.pack(fill=tk.BOTH, expand=True, padx=8)
@@ -737,6 +744,7 @@ def main(args=None):
     ap.add_argument("--repo", default=os.environ.get("AIRA_REPO", "~/AIRA_Robot"),
                     help="clone di AIRA_Robot (profili in periph/)")
     ap.add_argument("--no-ros", action="store_true", help="niente ROS: comandano gli slider")
+    ap.add_argument("--windowed", action="store_true", help="in finestra invece che a schermo intero")
     known, ros_args = ap.parse_known_args(args)
     node = None
     if HAVE_ROS and not known.no_ros:

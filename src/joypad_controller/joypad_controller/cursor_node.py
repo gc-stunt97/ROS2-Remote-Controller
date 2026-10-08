@@ -167,10 +167,24 @@ class CursorNode(Node):
         self._kb = None
         if self._key_map:
             kb_caps = {ecodes.EV_KEY: sorted(set(self._key_map.values()))}
-            if self._rep_delay > 0:
+            want_rep = self._rep_delay > 0
+            if want_rep:
                 kb_caps[ecodes.EV_REP] = [ecodes.REP_DELAY, ecodes.REP_PERIOD]
-            self._kb = UInput(kb_caps, name="AIRA controller keyboard", version=0x1)
-            if self._rep_delay > 0:
+            try:
+                self._kb = UInput(kb_caps, name="AIRA controller keyboard", version=0x1)
+            except OSError as exc:
+                # ⚠️ python3-evdev 1.4 (quello di Ubuntu 22.04 sul telecomando) non sa
+                # creare un device con EV_REP: EINVAL, e il nodo moriva all'avvio --
+                # niente modo mouse dopo ogni plancia (visto l'08/10). Senza EV_REP
+                # l'autorepeat lo fa comunque il server grafico (XKB / compositor).
+                if not want_rep:
+                    raise
+                self.get_logger().warning(
+                    f"tastiera virtuale senza EV_REP ({exc}): l'autorepeat lo fa il desktop")
+                del kb_caps[ecodes.EV_REP]
+                want_rep = False
+                self._kb = UInput(kb_caps, name="AIRA controller keyboard", version=0x1)
+            if want_rep:
                 self._kb.write(ecodes.EV_REP, ecodes.REP_DELAY, self._rep_delay)
                 self._kb.write(ecodes.EV_REP, ecodes.REP_PERIOD, self._rep_period)
                 self._kb.syn()
