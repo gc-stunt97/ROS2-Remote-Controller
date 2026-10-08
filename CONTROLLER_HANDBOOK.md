@@ -759,6 +759,14 @@ mkdir -p ~/.config/autostart && cp desktop/AIRA-Mouse.desktop ~/.config/autostar
    lo stesso in **0,13 s**, stesso identico risultato, ed era già installato. Era la causa degli
    ~11 s che il modo mouse ci metteva a tornare dopo una plancia: ora ~2 s (di cui 1,8 è il
    `source` di ROS, incomprimibile).
+8. **(08/10) `python3-evdev` 1.4 non crea un UInput con `EV_REP`** → `EINVAL`, e il `cursor_node`
+   moriva all'avvio (tastiera virtuale dei tasti su/invio/giù, commit `e902bb3` mai girato prima).
+   Ora riprova senza `EV_REP`: l'autorepeat lo fa comunque il desktop.
+9. **(08/10) Un `cursor_node` morto resta APPESO** (stato `Sl`, ignora SIGTERM) **ma non tiene la
+   seriale**: lo `stop` vedeva la seriale libera e usciva senza `-9`, lo `start` dopo diceva "già
+   attivo" → il modo mouse non tornava più dopo nessuna plancia. Lo `stop` ora aspetta seriale
+   libera **e** nessun `cursor_node`. ⚠️ Provandolo da SSH, mai scrivere `__node:=cursor_node` nella
+   riga di comando: il `pkill -9` prende anche la propria shell.
 
 ### 12.6 Robustezza — cosa regge e cosa no
 
@@ -809,7 +817,7 @@ robot funzioni.
 
 ## 14. Banco dei micro AIRA — il telecomando finge di essere il mini PC (DECISO 24/09/2026)
 
-> ✅ **Programma scritto il 05/10/2026** (sez. 14.5), mai provato con una scheda vera. Il
+> ✅ **Programma scritto il 05/10/2026** (sez. 14.5), ✅ **provato con la scheda vera l'08/10**. Il
 > lato robot — scheda, protocollo, slave, OTA — sta in `AIRA_HANDBOOK.md` **§14**; il banco in
 > **§14.12**; il primo cliente è il **busto** (§13.3: cardano + due tergicristalli, pitch + roll).
 
@@ -891,7 +899,12 @@ Programma **a parte** rispetto alle plance, nello stesso repo, con la sua icona 
 ### 14.5 ✅ Il programma: `aira_bench` (05/10/2026)
 
 **Scritto e provato contro un micro FINTO** (`AIRA_Robot/tools/periph_sim.py`, stesso protocollo
-del firmware): aggancio, config, arm/disarm, comandi, watchdog. ⚠️ **Mai con una scheda vera.**
+del firmware): aggancio, config, arm/disarm, comandi, watchdog. ✅ **08/10: con la scheda vera**
+(ESP32-P4-ETH, busto): aggancio dal MAC, sicurezze, fungo, cavo staccato, **OTA e rollback**, anche
+attraverso lo switch TSW100. Stesso giorno: **lista dei micro in rete** (sez. 14.4), **schermo
+intero** con pulsante **chiudi** in alto (niente X; `--windowed` per la finestra) e impaginazione
+per lo schermo **800×480** — colonna destra a schede *log / micro / cal-OTA / slider*, misurata
+sul Pi 791×371. 📌 Dentro il banco il cursore non va (la seriale è del banco): si usa il touch.
 Firmware e protocollo: `AIRA_Robot/firmware/esp32p4_slave/README.md`.
 
 **Installazione sul telecomando (una volta):**
