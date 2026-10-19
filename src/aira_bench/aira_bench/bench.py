@@ -566,6 +566,12 @@ class Bench:
         self.link.send({"t": "arm", "on": True})
 
     def _set_mode(self):
+        # il micro cambia modo SOLO da disarmato e se rifiuta lo dice solo sulla sua seriale:
+        # qui lo si dice a voce, e _tick riporta comunque il pallino al modo vero (19/10)
+        tel, age = self._tel()
+        if age < 0.5 and tel.get("st") == "armato" and tel.get("mode") != self.mode_var.get():
+            self.log("[banco] cambio modo IGNORATO: prima disarmare")
+        self.mode_click = time.time()
         self.link.send({"t": "mode", "m": self.mode_var.get()})
 
     def _toggle_hb(self):
@@ -709,6 +715,9 @@ class Bench:
         txt = f"{st.upper()}"
         if f:
             txt += f"  ({f})"
+        settled = time.time() - getattr(self, "mode_click", 0.0) > 0.5   # telemetria in ritardo sul clic
+        if live and settled and tel.get("mode") in ("pos", "raw") and tel["mode"] != self.mode_var.get():
+            self.mode_var.set(tel["mode"])     # il pallino segue il micro, non l'ultimo clic
         if live:
             txt += f"   {tel.get('mode', '').upper()}" + ("" if tel.get("cal") else "  NON CALIBRATO")
         self.state_lbl.config(text=txt, bg=color)
