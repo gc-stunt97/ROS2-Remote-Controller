@@ -347,6 +347,12 @@ class Bench:
         tk.Checkbutton(tab_sl, text="comanda con gli slider (stick esclusi)", variable=self.use_sl,
                        command=self._toggle_sliders, bg=BG, fg=FG, selectcolor=BTN,
                        activebackground=BG, activeforeground=FG).pack(anchor="w")
+        # RAW a fondo = 100% di duty: alza INSIEME raw_span (qui) e raw_max (nel micro, via cfg),
+        # che di norma tagliano entrambi al 30%. Si accende solo da disarmato (19/10)
+        self.full_duty = tk.BooleanVar(value=False)
+        tk.Checkbutton(tab_sl, text="RAW: a fondo = 100% duty (di norma 30%)", variable=self.full_duty,
+                       command=self._toggle_full_duty, bg=BG, fg=FG, selectcolor=BTN,
+                       activebackground=BG, activeforeground=FG).pack(anchor="w")
         self.sl = {}
         for name in ("pitch / mot A", "roll / mot B"):
             sc = tk.Scale(tab_sl, from_=-1.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL,
@@ -543,6 +549,8 @@ class Bench:
         if not self.role:
             return
         cfg = self.prof.cfg(self.role)
+        if self.full_duty.get():               # la spunta sopravvive a un riaggancio del micro
+            cfg["raw_max"] = 1.0
         # il micro non accetta piu' di ~1 KB per datagramma: si spezza
         items = list(cfg.items())
         for i in range(0, len(items), 12):
@@ -579,6 +587,25 @@ class Bench:
             sc.set(0)
         self.log("[banco] comandano gli SLIDER (stick esclusi)" if self.use_sl.get()
                  else "[banco] comandano gli STICK")
+
+    def _toggle_full_duty(self):
+        prof_max = float(self.prof.cfg(self.role).get("raw_max", 0.3)) if self.role else 0.3
+        if not self.full_duty.get():           # ridurre e' sempre sicuro, anche da armato
+            self.link.send({"t": "cfg", "raw_max": prof_max})
+            self.log(f"[banco] RAW di nuovo al {prof_max:.0%} di duty")
+            return
+        tel, age = self._tel()
+        if age < 0.5 and tel.get("st") == "armato":
+            self.full_duty.set(False)
+            messagebox.showwarning("100% duty", "Prima disarmare.")
+            return
+        if not messagebox.askyesno("100% duty", "RAW a fondo = 100% del PWM (12 V pieni).\n"
+                                   "In RAW non ci sono fine-corsa: sul busto vero il motore va\n"
+                                   "dritto contro le battute. Procedere?"):
+            self.full_duty.set(False)
+            return
+        self.link.send({"t": "cfg", "raw_max": 1.0})
+        self.log("[banco] RAW al 100% di duty (raw_max 1.0 nel micro)")
 
     def _set_mode(self):
         # il micro cambia modo SOLO da disarmato e se rifiuta lo dice solo sulla sua seriale:
@@ -625,7 +652,7 @@ class Bench:
             rx = ry = self.sl["roll / mot B"].get()
         b = getattr(self, "bench_cfg", {})
         if tel.get("mode") == "raw":
-            span = float(b.get("raw_span", 0.3))
+            span = 1.0 if self.full_duty.get() else float(b.get("raw_span", 0.3))
             self.link.send({"t": "raw", "a": round(ly * span, 3), "b": round(ry * span, 3)})
         else:
             self.link.send({"t": "cmd", "p": round(ly * float(b.get("pitch_span", 8.0)), 2),
