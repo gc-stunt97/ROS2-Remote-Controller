@@ -56,6 +56,7 @@ HELLO_PORT = 47001        # banco: annunci + telemetria + log (un socket solo)
 HB_HZ = 20
 OTA_HTTP_PORT = 8070
 JOY_TIMEOUT = 1.0         # s senza messaggi joystick -> comandano gli slider
+JOY_DRAIN = 20            # callback ROS svuotate a ogni giro di _tick (vedi li')
 MICRO_GONE_S = 5.0        # s senza annunci -> la scheda in lista diventa "assente"
 
 # estetica: come le plance (catppuccin)
@@ -229,10 +230,11 @@ class Bench:
         self.link.on_ack = lambda m: None
 
         if node is not None:
+            # depth 1: degli stick conta solo l'ultimo valore, una coda piu' lunga = ritardo
             node.create_subscription(Point, "left_joystick_data",
-                                     lambda m: self._on_joy("left", m), 10)
+                                     lambda m: self._on_joy("left", m), 1)
             node.create_subscription(Point, "right_joystick_data",
-                                     lambda m: self._on_joy("right", m), 10)
+                                     lambda m: self._on_joy("right", m), 1)
             latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                                  reliability=ReliabilityPolicy.RELIABLE)
             node.create_subscription(Bool, "/emergency_stop", self._on_estop, latched)
@@ -687,7 +689,11 @@ class Bench:
 
     def _tick(self):
         if self.node is not None:
-            rclpy.spin_once(self.node, timeout_sec=0.0)
+            # spin_once esegue UNA callback: a giro se ne svuotano fino a JOY_DRAIN, perche' gli
+            # stick arrivano a ~2x50 Hz e qui si gira a 20 Hz. Con una sola, le code restavano
+            # piene e stick (e fungo) arrivavano con ~1 s di ritardo (19/10).
+            for _ in range(JOY_DRAIN):
+                rclpy.spin_once(self.node, timeout_sec=0.0)
         self._ticks = getattr(self, "_ticks", 0) + 1
         if self._ticks % 10 == 0:            # 2 Hz: alla lista basta
             self._refresh_micros()
