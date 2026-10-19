@@ -339,8 +339,14 @@ class Bench:
         self.tabs.add(tab_sl, text="slider")
 
         # slider (senza ROS o senza joystick)
-        tk.Label(tab_sl, text="comandano solo se il joystick tace da 1 s", bg=BG, fg=GRID,
-                 font=("TkFixedFont", 8)).pack(anchor="w", pady=(4, 0))
+        tk.Label(tab_sl, text="comandano se il joystick tace da 1 s, o sempre con la casella",
+                 bg=BG, fg=GRID, font=("TkFixedFont", 8)).pack(anchor="w", pady=(4, 0))
+        # con la casella gli stick sono esclusi: duty/angolo FISSO a mani libere (tester, ACS712,
+        # prove di durata). Gli stick sul telecomando pubblicano sempre, anche fermi (19/10)
+        self.use_sl = tk.BooleanVar(value=False)
+        tk.Checkbutton(tab_sl, text="comanda con gli slider (stick esclusi)", variable=self.use_sl,
+                       command=self._toggle_sliders, bg=BG, fg=FG, selectcolor=BTN,
+                       activebackground=BG, activeforeground=FG).pack(anchor="w")
         self.sl = {}
         for name in ("pitch / mot A", "roll / mot B"):
             sc = tk.Scale(tab_sl, from_=-1.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL,
@@ -563,7 +569,16 @@ class Bench:
         if not messagebox.askyesno("Arma", f"Armare il busto in modo {mode.upper()}?\n"
                                    "Mani lontane da leve e tiranti."):
             return
+        if self.use_sl.get():                  # niente strappo all'arm: si parte da zero
+            for sc in self.sl.values():
+                sc.set(0)
         self.link.send({"t": "arm", "on": True})
+
+    def _toggle_sliders(self):
+        for sc in self.sl.values():            # al cambio di sorgente si riparte da zero
+            sc.set(0)
+        self.log("[banco] comandano gli SLIDER (stick esclusi)" if self.use_sl.get()
+                 else "[banco] comandano gli STICK")
 
     def _set_mode(self):
         # il micro cambia modo SOLO da disarmato e se rifiuta lo dice solo sulla sua seriale:
@@ -600,7 +615,8 @@ class Bench:
     def _send_command(self, tel):
         if tel.get("st") != "armato" or self.estop:
             return
-        joy_live = self.node is not None and time.time() - self.joy_time < JOY_TIMEOUT
+        joy_live = (self.node is not None and not self.use_sl.get()
+                    and time.time() - self.joy_time < JOY_TIMEOUT)
         if joy_live:
             lx, ly, _ = self.joy["left"]
             rx, ry, _ = self.joy["right"]
