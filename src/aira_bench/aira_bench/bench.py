@@ -58,6 +58,8 @@ HB_HZ = 20
 OTA_HTTP_PORT = 8070
 JOY_TIMEOUT = 1.0         # s senza messaggi joystick -> comandano gli slider
 JOY_DRAIN = 20            # callback ROS svuotate a ogni giro di _tick (vedi li')
+TEL_LOG = os.path.expanduser("~/.aira/bench_tel.jsonl")   # telemetria da armato, 50 Hz
+TEL_LOG_MAX = 50 * 1024 * 1024                             # ~1 MB/min: circa 50 min di prove
 MICRO_GONE_S = 5.0        # s senza annunci -> la scheda in lista diventa "assente"
 
 # estetica: come le plance (catppuccin)
@@ -133,6 +135,13 @@ class Link:
         self.hb_enabled = True
         self.on_hello = None      # callback(mac, hello) chiamata dal thread di rete
         self.on_ack = None
+        # registro della telemetria da ARMATO, per tarare l'anello sui numeri veri (20/10).
+        # Si riparte da vuoto a ogni avvio della plancia; tetto TEL_LOG_MAX per non riempire il disco.
+        try:
+            os.makedirs(os.path.dirname(TEL_LOG), exist_ok=True)
+            self.tel_log = open(TEL_LOG, "wb")
+        except OSError:
+            self.tel_log = None
         self._stop = threading.Event()
         threading.Thread(target=self._rx, daemon=True).start()
         threading.Thread(target=self._hb, daemon=True).start()
@@ -181,6 +190,9 @@ class Link:
                 with self.lock:
                     self.tel = msg
                     self.tel_time = time.time()
+                if self.tel_log and msg.get("st") == "armato" and self.tel_log.tell() < TEL_LOG_MAX:
+                    self.tel_log.write(data.rstrip(b"\0\r\n") + b"\n")
+                    self.tel_log.flush()
             elif t == "log":
                 self.log(f"[micro] {msg.get('m', '')}")
             elif t == "ack":
