@@ -893,7 +893,8 @@ Programma **a parte** rispetto alle plance, nello stesso repo, con la sua icona 
     cavo che cade (i motori devono fermarsi da soli);
   - **log del micro** in una finestra (via UDP: la seriale non c'è);
   - **flash OTA** e prova di **rollback** (`AIRA_HANDBOOK.md` §14.9).
-- **Primo pannello, il busto:** stick SX **Y → pitch**, stick DX **X → roll**. Si mandano **angoli**;
+- **Primo pannello, il busto:** stick SX **Y → pitch**, stick DX **X → roll** (✏️ 20/10: ora tutti e
+  due sullo stick DX, sez. 14.5). Si mandano **angoli**;
   il mixing verso i due tergicristalli lo fa il micro, così al banco si collauda anche quello.
 
 ### 14.5 ✅ Il programma: `aira_bench` (05/10/2026)
@@ -926,8 +927,16 @@ mouse, lo riavvia alla chiusura).
   l'heartbeat**;
 - diventa capo: **heartbeat 20 Hz** con `boss: banco`, spinge la config del profilo (più la
   calibrazione locale in `~/.aira/periph/<ruolo>.yaml`), e la rispinge se il micro si riavvia;
-- **stick**: posizione → SX Y = pitch, DX X = roll; RAW → SX Y = motore A, DX Y = motore B.
-  Ampiezze nella sezione `bench:` del profilo. Senza joystick (o senza ROS) comandano gli **slider**;
+- **stick** (✏️ 20/10, tutto sullo **stick DX**): posizione → Y = pitch, X = roll; RAW →
+  **push-pull**, Y = due motori insieme, X = in opposizione, coi segni `mix.sa/sb/sr` del profilo
+  (destra sullo stick = destra sul busto), normalizzato in diagonale. **Zona morta 0,08** sugli
+  stick (a riposo stanno a ±0,04: a span 25° era ~1° di target che ballava da solo). Ampiezze
+  nella sezione `bench:` del profilo, ⚠️ letta **solo dal repo** (la calibrazione locale copre solo
+  `cfg`). Senza joystick (o senza ROS), o con la casella «comanda con gli slider», comandano gli
+  **slider**, uno per motore in RAW (servono a mappare i versi);
+- ⭐ **registro della telemetria** (20/10): da armato ogni riga `tel` (50 Hz) va in
+  `~/.aira/bench_tel.jsonl`, azzerato a ogni avvio, tetto 50 MB → si tara l'anello sui dati
+  (scp e grafico), non a occhio;
 - **fungo** `/emergency_stop` (reliable + transient_local): disarma subito e blocca l'arm;
 - **stacca heartbeat**: simula il cavo che cade, il micro deve disarmarsi in 300 ms;
 - **calibrazione pot** a due pose (angolo dalla livella) → `~/.aira/periph/torso.yaml` + log con i
