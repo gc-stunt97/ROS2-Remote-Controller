@@ -9,8 +9,9 @@ lo switch del robot, al posto del mini PC) e questo programma:
     restano senza capo = disarmati);
   - si aggancia come CAPO: heartbeat 20 Hz con boss="banco", spinge la config del PROFILO del
     ruolo (`periph/<ruolo>.yaml`, la STESSA che spingera' il mini PC);
-  - stick -> giunti (busto: stick DX Y -> pitch, stick DX X -> roll), oppure modo RAW per
-    mappare i versi dei motori;
+  - stick -> giunti (busto: stick DX Y -> pitch, stick DX X -> roll), oppure modo RAW: dallo
+    stick DX push-pull (Y = motori insieme, X = in opposizione), dagli slider un motore
+    ciascuno per mappare i versi;
   - mostra telemetria, fault, eta' dell'heartbeat, log del micro;
   - "stacca heartbeat" simula il cavo che cade: i motori si devono fermare da soli;
   - OTA: sceglie un .bin, lo serve via HTTP e dice al micro di scaricarlo;
@@ -549,6 +550,8 @@ class Bench:
         if not self.role:
             return
         cfg = self.prof.cfg(self.role)
+        # segni del mixing, per il RAW push-pull dallo stick (gli stessi che usa il firmware)
+        self.mix = tuple(float(cfg.get(k, 1.0)) for k in ("mix.sa", "mix.sb", "mix.sr"))
         if self.full_duty.get():               # la spunta sopravvive a un riaggancio del micro
             cfg["raw_max"] = 1.0
         # il micro non accetta piu' di ~1 KB per datagramma: si spezza
@@ -655,7 +658,16 @@ class Bench:
         b = getattr(self, "bench_cfg", {})
         if tel.get("mode") == "raw":
             span = 1.0 if self.full_duty.get() else float(b.get("raw_span", 0.3))
-            self.link.send({"t": "raw", "a": round(ly * span, 3), "b": round(ry * span, 3)})
+            if joy_live:
+                # stick DX push-pull (20/10): Y = motori insieme (pitch), X = in opposizione
+                # (roll), coi segni del mixing del firmware -> destra sullo stick = destra
+                sa, sb, sr = getattr(self, "mix", (1.0, 1.0, 1.0))
+                ua, ub = sa * (ry + sr * rx), sb * (ry - sr * rx)
+                k = max(1.0, abs(ua), abs(ub))         # in diagonale non si supera il fondo
+                ua, ub = ua / k, ub / k
+            else:
+                ua, ub = ly, ry                        # slider: un motore ciascuno (mappatura versi)
+            self.link.send({"t": "raw", "a": round(ua * span, 3), "b": round(ub * span, 3)})
         else:
             self.link.send({"t": "cmd", "p": round(py * float(b.get("pitch_span", 8.0)), 2),
                             "r": round(rx * float(b.get("roll_span", 6.0)), 2)})
