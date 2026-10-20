@@ -58,6 +58,7 @@ HB_HZ = 20
 OTA_HTTP_PORT = 8070
 JOY_TIMEOUT = 1.0         # s senza messaggi joystick -> comandano gli slider
 JOY_DRAIN = 20            # callback ROS svuotate a ogni giro di _tick (vedi li')
+STICK_DZ = 0.08           # zona morta degli stick (a riposo stanno entro +-0.04)
 TEL_LOG = os.path.expanduser("~/.aira/bench_tel.jsonl")   # telemetria da armato, 50 Hz
 TEL_LOG_MAX = 50 * 1024 * 1024                             # ~1 MB/min: circa 50 min di prove
 MICRO_GONE_S = 5.0        # s senza annunci -> la scheda in lista diventa "assente"
@@ -204,6 +205,14 @@ class Link:
             elif t == "cfg_dump":
                 items = ", ".join(f"{k}={v}" for k, v in sorted(msg.items()) if k != "t")
                 self.log(f"[micro] config attuale: {items}")
+
+
+def stick_dz(v):
+    """zona morta dello stick, riscalata: niente salto all'uscita, a fondo resta 1."""
+    a = abs(v)
+    if a < STICK_DZ:
+        return 0.0
+    return math.copysign(min(1.0, (a - STICK_DZ) / (1.0 - STICK_DZ)), v)
 
 
 def local_ip_towards(ip):
@@ -660,8 +669,9 @@ class Bench:
         joy_live = (self.node is not None and not self.use_sl.get()
                     and time.time() - self.joy_time < JOY_TIMEOUT)
         if joy_live:
-            lx, ly, _ = self.joy["left"]
-            rx, ry, _ = self.joy["right"]
+            # zona morta: a riposo lo stick non torna a 0 (-0.03..0.04) e a span 25 deg
+            # erano ~1 deg di target che ballava da solo (telemetria 20/10)
+            lx, ly, rx, ry = (stick_dz(v) for v in (*self.joy["left"][:2], *self.joy["right"][:2]))
             py = ry               # in posizione tutto sullo stick DX: Y -> pitch, X -> roll (20/10)
         else:
             ly = self.sl["pitch / mot A"].get()
