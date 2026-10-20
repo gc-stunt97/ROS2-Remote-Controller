@@ -9,7 +9,7 @@ lo switch del robot, al posto del mini PC) e questo programma:
     restano senza capo = disarmati);
   - si aggancia come CAPO: heartbeat 20 Hz con boss="banco", spinge la config del PROFILO del
     ruolo (`periph/<ruolo>.yaml`, la STESSA che spingera' il mini PC);
-  - stick -> giunti (busto: stick SX Y -> pitch, stick DX X -> roll), oppure modo RAW per
+  - stick -> giunti (busto: stick DX Y -> pitch, stick DX X -> roll), oppure modo RAW per
     mappare i versi dei motori;
   - mostra telemetria, fault, eta' dell'heartbeat, log del micro;
   - "stacca heartbeat" simula il cavo che cade: i motori si devono fermare da soli;
@@ -647,15 +647,17 @@ class Bench:
         if joy_live:
             lx, ly, _ = self.joy["left"]
             rx, ry, _ = self.joy["right"]
+            py = ry               # in posizione tutto sullo stick DX: Y -> pitch, X -> roll (20/10)
         else:
             ly = self.sl["pitch / mot A"].get()
             rx = ry = self.sl["roll / mot B"].get()
+            py = ly
         b = getattr(self, "bench_cfg", {})
         if tel.get("mode") == "raw":
             span = 1.0 if self.full_duty.get() else float(b.get("raw_span", 0.3))
             self.link.send({"t": "raw", "a": round(ly * span, 3), "b": round(ry * span, 3)})
         else:
-            self.link.send({"t": "cmd", "p": round(ly * float(b.get("pitch_span", 8.0)), 2),
+            self.link.send({"t": "cmd", "p": round(py * float(b.get("pitch_span", 8.0)), 2),
                             "r": round(rx * float(b.get("roll_span", 6.0)), 2)})
 
     # ------------------------------------------------------------ calibrazione
