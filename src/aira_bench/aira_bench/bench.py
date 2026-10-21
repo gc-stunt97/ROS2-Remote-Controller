@@ -375,6 +375,13 @@ class Bench:
         tk.Checkbutton(tab_sl, text="RAW: a fondo = 100% duty (di norma 30%)", variable=self.full_duty,
                        command=self._toggle_full_duty, bg=BG, fg=FG, selectcolor=BTN,
                        activebackground=BG, activeforeground=FG).pack(anchor="w")
+        # diagnosi: in RAW il micro ignora pot e limiti (cfg raw_ignore_pot), resta solo la
+        # sovracorrente. Serve dopo un cambio motori, quando il busto va sui limiti logici in
+        # un secondo e ogni colpo finisce in fault (21/10). Si accende solo da disarmato
+        self.no_lim = tk.BooleanVar(value=False)
+        tk.Checkbutton(tab_sl, text="RAW: ignora pot e limiti (diagnosi)", variable=self.no_lim,
+                       command=self._toggle_no_lim, bg=BG, fg=FG, selectcolor=BTN,
+                       activebackground=BG, activeforeground=FG).pack(anchor="w")
         self.sl = {}
         for name in ("pitch / mot A", "roll / mot B"):
             sc = tk.Scale(tab_sl, from_=-1.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL,
@@ -575,6 +582,8 @@ class Bench:
         self.mix = tuple(float(cfg.get(k, 1.0)) for k in ("mix.sa", "mix.sb", "mix.sr"))
         if self.full_duty.get():               # la spunta sopravvive a un riaggancio del micro
             cfg["raw_max"] = 1.0
+        if self.no_lim.get():
+            cfg["raw_ignore_pot"] = 1
         # il micro non accetta piu' di ~1 KB per datagramma: si spezza
         items = list(cfg.items())
         for i in range(0, len(items), 12):
@@ -630,6 +639,25 @@ class Bench:
             return
         self.link.send({"t": "cfg", "raw_max": 1.0})
         self.log("[banco] RAW al 100% di duty (raw_max 1.0 nel micro)")
+
+    def _toggle_no_lim(self):
+        prof = self.prof.cfg(self.role).get("raw_ignore_pot", 0) if self.role else 0
+        if not self.no_lim.get():              # rimettere i limiti e' sempre sicuro
+            self.link.send({"t": "cfg", "raw_ignore_pot": prof})
+            self.log("[banco] RAW: pot e limiti di nuovo attivi")
+            return
+        tel, age = self._tel()
+        if age < 0.5 and tel.get("st") == "armato":
+            self.no_lim.set(False)
+            messagebox.showwarning("ignora limiti", "Prima disarmare.")
+            return
+        if not messagebox.askyesno("ignora limiti", "In RAW il micro non guarda piu' i pot:\n"
+                                   "niente fault limite, il busto puo' arrivare alle battute.\n"
+                                   "Resta solo la sovracorrente. Colpi brevi. Procedere?"):
+            self.no_lim.set(False)
+            return
+        self.link.send({"t": "cfg", "raw_ignore_pot": 1})
+        self.log("[banco] RAW: pot e limiti IGNORATI (diagnosi)")
 
     def _set_mode(self):
         # il micro cambia modo SOLO da disarmato e se rifiuta lo dice solo sulla sua seriale:
