@@ -934,6 +934,13 @@ mouse, lo riavvia alla chiusura).
   nella sezione `bench:` del profilo, ⚠️ letta **solo dal repo** (la calibrazione locale copre solo
   `cfg`). Senza joystick (o senza ROS), o con la casella «comanda con gli slider», comandano gli
   **slider**, uno per motore in RAW (servono a mappare i versi);
+- casella **«RAW: ignora pot e limiti (diagnosi)»** (21/10): manda `raw_ignore_pot 1` al micro,
+  si accende **solo da disarmato** con conferma, vale **solo in RAW** (in posizione le protezioni
+  restano tutte); restano sovracorrente, fungo e heartbeat. Serve dopo un cambio motori, quando un
+  colpo RAW porta il busto sui limiti logici in un secondo. Si spegne anche da armato;
+- ⚠️ **dopo un OTA o un riavvio del micro la plancia NON rimanda la cfg da sola** (il micro torna
+  NON CALIBRATO): premere **«rimanda cfg»**. Da correggere. Lo span degli stick (`bench:`) si
+  rilegge solo all'aggancio → dopo averlo cambiato si riapre la plancia;
 - ⭐ **registro della telemetria** (20/10): da armato ogni riga `tel` (50 Hz) va in
   `~/.aira/bench_tel.jsonl`, azzerato a ogni avvio, tetto 50 MB → si tara l'anello sui dati
   (scp e grafico), non a occhio;
