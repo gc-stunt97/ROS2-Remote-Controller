@@ -62,11 +62,12 @@ STICK_DZ = 0.08           # zona morta degli stick (a riposo stanno entro +-0.04
 TEL_LOG = os.path.expanduser("~/.aira/bench_tel.jsonl")   # telemetria da armato, 50 Hz
 # scheda PID (22/10): parametri di taratura regolabili da armato (il fw >= 0.2.9 non disarma
 # per queste chiavi). (chiave cfg, etichetta, min, max, passo); "vel" manda vel_max E vel_banco
-TUNE = [("pitch.kp", "pitch kp", 0.0, 0.20, 0.005), ("roll.kp", "roll kp", 0.0, 0.20, 0.005),
-        ("pitch.ki", "pitch ki", 0.0, 0.10, 0.002), ("roll.ki", "roll ki", 0.0, 0.10, 0.002),
-        ("pitch.kd", "pitch kd", 0.0, 0.02, 0.0005), ("roll.kd", "roll kd", 0.0, 0.02, 0.0005),
-        ("vel", "velocita' max (deg/s)", 2.0, 40.0, 1.0), ("duty_max", "PWM max (duty)", 0.10, 1.0, 0.01),
-        ("duty_min", "PWM min, stacco (duty)", 0.0, 0.20, 0.005)]
+TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("roll.kp", "roll kp", 0.0, 0.50, 0.005),
+        ("pitch.ki", "pitch ki", 0.0, 0.30, 0.002), ("roll.ki", "roll ki", 0.0, 0.30, 0.002),
+        ("pitch.kd", "pitch kd", 0.0, 0.05, 0.0005), ("roll.kd", "roll kd", 0.0, 0.05, 0.0005),
+        ("vel", "velocita' max (deg/s)", 2.0, 120.0, 1.0), ("acc_max", "accelerazione (deg/s2)", 10.0, 600.0, 10.0),
+        ("duty_max", "PWM max (duty)", 0.10, 1.0, 0.01), ("duty_min", "PWM min, stacco (duty)", 0.0, 0.30, 0.005),
+        ("stall.duty", "stallo: soglia duty", 0.20, 1.0, 0.01), ("stall.ms", "stallo: tempo (ms)", 200.0, 5000.0, 100.0)]
 TEL_LOG_MAX = 50 * 1024 * 1024                             # ~1 MB/min: circa 50 min di prove
 MICRO_GONE_S = 5.0        # s senza annunci -> la scheda in lista diventa "assente"
 
