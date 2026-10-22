@@ -941,7 +941,7 @@ mouse, lo riavvia alla chiusura).
 - scheda **PID** (22/10): slider per **kp/ki/kd** di pitch e roll, **velocità max** (manda
   `vel_max` e `vel_banco`), **PWM max** (`duty_max`) e **PWM min/stacco** (`duty_min`). Si manda
   al **rilascio** dello slider; con fw **≥ 0.2.9** queste chiavi **non disarmano** (le altre sì).
-  scale larghe (kp 0,5, vel 120 °/s, PWM fino a 1,0) + **accelerazione** e **stallo** (soglia e tempo). «valori del profilo» torna al repo, «scrivi valori nel log» stampa la riga da copiare in
+  scale larghe (kp 0,5, vel 120 °/s, PWM fino a 1,0) + **accelerazione** e **stallo** (soglia e tempo). (22/10 sera) **3 colonne**, una riga per gruppo: pitch, roll, moto, stacco+stallo, **gioco** (`gap.duty/i_on/ms`, fw ≥ 0.3.0). «valori del profilo» torna al repo, «scrivi valori nel log» stampa la riga da copiare in
   `periph/torso.yaml`. Ogni cambio finisce anche nel registro come riga `{"t":"tune"}`.
   «rimanda cfg» riporta gli slider ai valori del profilo;
 - ⚠️ **dopo un OTA o un riavvio del micro la plancia NON rimanda la cfg da sola** (il micro torna

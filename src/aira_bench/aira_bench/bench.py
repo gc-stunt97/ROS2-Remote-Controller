@@ -62,12 +62,16 @@ STICK_DZ = 0.08           # zona morta degli stick (a riposo stanno entro +-0.04
 TEL_LOG = os.path.expanduser("~/.aira/bench_tel.jsonl")   # telemetria da armato, 50 Hz
 # scheda PID (22/10): parametri di taratura regolabili da armato (il fw >= 0.2.9 non disarma
 # per queste chiavi). (chiave cfg, etichetta, min, max, passo); "vel" manda vel_max E vel_banco
-TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("roll.kp", "roll kp", 0.0, 0.50, 0.005),
-        ("pitch.ki", "pitch ki", 0.0, 0.30, 0.002), ("roll.ki", "roll ki", 0.0, 0.30, 0.002),
-        ("pitch.kd", "pitch kd", 0.0, 0.05, 0.0005), ("roll.kd", "roll kd", 0.0, 0.05, 0.0005),
-        ("vel", "velocita' max (deg/s)", 2.0, 120.0, 1.0), ("acc_max", "accelerazione (deg/s2)", 10.0, 600.0, 10.0),
-        ("duty_max", "PWM max (duty)", 0.10, 1.0, 0.01), ("duty_min", "PWM min, stacco (duty)", 0.0, 0.30, 0.005),
-        ("stall.duty", "stallo: soglia duty", 0.20, 1.0, 0.01), ("stall.ms", "stallo: tempo (ms)", 200.0, 5000.0, 100.0)]
+TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("pitch.ki", "pitch ki", 0.0, 0.30, 0.002),
+        ("pitch.kd", "pitch kd", 0.0, 0.05, 0.0005),
+        ("roll.kp", "roll kp", 0.0, 0.50, 0.005), ("roll.ki", "roll ki", 0.0, 0.30, 0.002),
+        ("roll.kd", "roll kd", 0.0, 0.05, 0.0005),
+        ("vel", "vel max deg/s", 2.0, 120.0, 1.0), ("acc_max", "acc deg/s2", 10.0, 600.0, 10.0),
+        ("duty_max", "PWM max", 0.10, 1.0, 0.01),
+        ("duty_min", "PWM min stacco", 0.0, 0.30, 0.005), ("stall.duty", "stallo duty", 0.20, 1.0, 0.01),
+        ("stall.ms", "stallo ms", 200.0, 5000.0, 100.0),
+        ("gap.duty", "gioco duty 0=off", 0.0, 0.30, 0.005), ("gap.i_on", "gioco presa A", 0.05, 1.0, 0.01),
+        ("gap.ms", "gioco max ms", 50.0, 600.0, 10.0)]
 TEL_LOG_MAX = 50 * 1024 * 1024                             # ~1 MB/min: circa 50 min di prove
 MICRO_GONE_S = 5.0        # s senza annunci -> la scheda in lista diventa "assente"
 
@@ -408,9 +412,9 @@ class Bench:
         self.tune_sl = {}
         for n, (key, label, lo, hi, step) in enumerate(TUNE):
             sc = tk.Scale(grid, from_=lo, to=hi, resolution=step, orient=tk.HORIZONTAL,
-                          length=195, label=label, bg=BG, fg=FG, troughcolor=BTN,
-                          highlightthickness=0, font=("TkFixedFont", 8))
-            sc.grid(row=n // 2, column=n % 2, padx=2)
+                          length=132, label=label, bg=BG, fg=FG, troughcolor=BTN,
+                          highlightthickness=0, font=("TkFixedFont", 8), width=10)
+            sc.grid(row=n // 3, column=n % 3, padx=1)   # 3 colonne: una riga per gruppo
             sc.bind("<ButtonRelease-1>", functools.partial(self._tune_send, key))
             self.tune_sl[key] = sc
         row = tk.Frame(tab_pid, bg=BG)
