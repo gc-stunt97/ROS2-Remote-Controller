@@ -62,14 +62,16 @@ STICK_DZ = 0.08           # zona morta degli stick (a riposo stanno entro +-0.04
 TEL_LOG = os.path.expanduser("~/.aira/bench_tel.jsonl")   # telemetria da armato, 50 Hz
 # scheda PID (22/10): parametri di taratura regolabili da armato (il fw >= 0.2.9 non disarma
 # per queste chiavi). (chiave cfg, etichetta, min, max, passo); "vel" manda vel_max E vel_banco
+# None = casella vuota nella griglia (3 colonne, una riga per gruppo)
 TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("pitch.ki", "pitch ki", 0.0, 0.30, 0.002),
         ("pitch.kd", "pitch kd", 0.0, 0.05, 0.0005),
         ("roll.kp", "roll kp", 0.0, 0.50, 0.005), ("roll.ki", "roll ki", 0.0, 0.30, 0.002),
         ("roll.kd", "roll kd", 0.0, 0.05, 0.0005),
+        ("pitch.u_max", "PWM max pitch", 0.05, 1.0, 0.01), ("roll.u_max", "PWM max roll", 0.05, 1.0, 0.01),
+        ("duty_max", "PWM max motori", 0.10, 1.0, 0.01),
         ("vel", "vel max deg/s", 2.0, 120.0, 1.0), ("acc_max", "acc deg/s2", 10.0, 600.0, 10.0),
-        ("duty_max", "PWM max", 0.10, 1.0, 0.01),
-        ("duty_min", "PWM min stacco", 0.0, 0.30, 0.005), ("stall.duty", "stallo duty", 0.20, 1.0, 0.01),
-        ("stall.ms", "stallo ms", 200.0, 5000.0, 100.0),
+        ("duty_min", "PWM min stacco", 0.0, 0.30, 0.005),
+        ("stall.duty", "stallo duty", 0.20, 1.0, 0.01), ("stall.ms", "stallo ms", 200.0, 5000.0, 100.0), None,
         ("gap.duty", "gioco duty 0=off", 0.0, 0.30, 0.005), ("gap.i_on", "gioco presa A", 0.05, 1.0, 0.01),
         ("gap.ms", "gioco max ms", 50.0, 600.0, 10.0)]
 TEL_LOG_MAX = 50 * 1024 * 1024                             # ~1 MB/min: circa 50 min di prove
@@ -410,7 +412,10 @@ class Bench:
         grid = tk.Frame(tab_pid, bg=BG)
         grid.pack(fill=tk.X)
         self.tune_sl = {}
-        for n, (key, label, lo, hi, step) in enumerate(TUNE):
+        for n, item in enumerate(TUNE):
+            if item is None:
+                continue
+            key, label, lo, hi, step = item
             sc = tk.Scale(grid, from_=lo, to=hi, resolution=step, orient=tk.HORIZONTAL,
                           length=132, label=label, bg=BG, fg=FG, troughcolor=BTN,
                           highlightthickness=0, font=("TkFixedFont", 8), width=10)
@@ -698,7 +703,7 @@ class Bench:
         cfg = self.prof.cfg(self.role)
         self._tune_show(cfg)
         msg = {"t": "cfg"}
-        for key, _l, _a, _b, _s in TUNE:
+        for key in self.tune_sl:
             if key == "vel":
                 msg.update({"vel_max": cfg.get("vel_max"), "vel_banco": cfg.get("vel_banco")})
             elif key in cfg:
