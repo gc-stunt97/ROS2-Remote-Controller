@@ -60,6 +60,13 @@ JOY_TIMEOUT = 1.0         # s senza messaggi joystick -> comandano gli slider
 JOY_DRAIN = 20            # callback ROS svuotate a ogni giro di _tick (vedi li')
 STICK_DZ = 0.08           # zona morta degli stick (a riposo stanno entro +-0.04)
 TEL_LOG = os.path.expanduser("~/.aira/bench_tel.jsonl")   # telemetria da armato, 50 Hz
+# scheda PID (22/10): parametri di taratura regolabili da armato (il fw >= 0.2.9 non disarma
+# per queste chiavi). (chiave cfg, etichetta, min, max, passo); "vel" manda vel_max E vel_banco
+TUNE = [("pitch.kp", "pitch kp", 0.0, 0.20, 0.005), ("roll.kp", "roll kp", 0.0, 0.20, 0.005),
+        ("pitch.ki", "pitch ki", 0.0, 0.10, 0.002), ("roll.ki", "roll ki", 0.0, 0.10, 0.002),
+        ("pitch.kd", "pitch kd", 0.0, 0.02, 0.0005), ("roll.kd", "roll kd", 0.0, 0.02, 0.0005),
+        ("vel", "velocita' max (deg/s)", 2.0, 40.0, 1.0), ("duty_max", "PWM max (duty)", 0.10, 1.0, 0.01),
+        ("duty_min", "PWM min, stacco (duty)", 0.0, 0.20, 0.005)]
 TEL_LOG_MAX = 50 * 1024 * 1024                             # ~1 MB/min: circa 50 min di prove
 MICRO_GONE_S = 5.0        # s senza annunci -> la scheda in lista diventa "assente"
 
@@ -392,6 +399,24 @@ class Bench:
         self._btn(tab_sl, "slider a zero",
                   lambda: [sc.set(0) for sc in self.sl.values()]).pack(pady=4)
 
+        # scheda PID: si manda al RILASCIO dello slider (set() da programma non manda nulla)
+        tab_pid = tk.Frame(self.tabs, bg=BG)
+        self.tabs.add(tab_pid, text="PID")
+        grid = tk.Frame(tab_pid, bg=BG)
+        grid.pack(fill=tk.X)
+        self.tune_sl = {}
+        for n, (key, label, lo, hi, step) in enumerate(TUNE):
+            sc = tk.Scale(grid, from_=lo, to=hi, resolution=step, orient=tk.HORIZONTAL,
+                          length=195, label=label, bg=BG, fg=FG, troughcolor=BTN,
+                          highlightthickness=0, font=("TkFixedFont", 8))
+            sc.grid(row=n // 2, column=n % 2, padx=2)
+            sc.bind("<ButtonRelease-1>", functools.partial(self._tune_send, key))
+            self.tune_sl[key] = sc
+        row = tk.Frame(tab_pid, bg=BG)
+        row.pack(fill=tk.X, pady=2)
+        self._btn(row, "valori del profilo", self._tune_reset).pack(side=tk.LEFT)
+        self._btn(row, "scrivi valori nel log", self._tune_dump).pack(side=tk.LEFT, padx=4)
+
         # una riga per ogni scheda che si annuncia (si ricostruisce solo quando cambia qualcosa)
         self.micro_frame = tk.Frame(self.tab_micro, bg=BG)
         self.micro_frame.pack(fill=tk.BOTH, expand=True, pady=4)
@@ -580,6 +605,7 @@ class Bench:
         cfg = self.prof.cfg(self.role)
         # segni del mixing, per il RAW push-pull dallo stick (gli stessi che usa il firmware)
         self.mix = tuple(float(cfg.get(k, 1.0)) for k in ("mix.sa", "mix.sb", "mix.sr"))
+        self._tune_show(cfg)
         if self.full_duty.get():               # la spunta sopravvive a un riaggancio del micro
             cfg["raw_max"] = 1.0
         if self.no_lim.get():
@@ -639,6 +665,49 @@ class Bench:
             return
         self.link.send({"t": "cfg", "raw_max": 1.0})
         self.log("[banco] RAW al 100% di duty (raw_max 1.0 nel micro)")
+
+    # ------------------------------------------------------------ scheda PID
+    def _tune_show(self, cfg):
+        for key, sc in self.tune_sl.items():
+            v = cfg.get("vel_max") if key == "vel" else cfg.get(key)
+            if v is not None:
+                sc.set(float(v))
+
+    def _tune_send(self, key, _ev=None):
+        if not self.role:
+            return
+        v = float(self.tune_sl[key].get())
+        msg = {"t": "cfg"}
+        if key == "vel":
+            msg.update({"vel_max": v, "vel_banco": v})   # al banco vale il minore dei due
+        else:
+            msg[key] = v
+        self.link.send(msg)
+        self.log(f"[PID] {key} = {v:g}")
+        # nel registro della telemetria, per sapere da quando valgono i valori nuovi
+        if self.link.tel_log:
+            self.link.tel_log.write((json.dumps({"t": "tune", "time": time.time(), "key": key,
+                                                 "v": v}) + "\n").encode())
+            self.link.tel_log.flush()
+
+    def _tune_reset(self):
+        if not self.role:
+            return
+        cfg = self.prof.cfg(self.role)
+        self._tune_show(cfg)
+        msg = {"t": "cfg"}
+        for key, _l, _a, _b, _s in TUNE:
+            if key == "vel":
+                msg.update({"vel_max": cfg.get("vel_max"), "vel_banco": cfg.get("vel_banco")})
+            elif key in cfg:
+                msg[key] = cfg[key]
+        self.link.send({k: v for k, v in msg.items() if v is not None})
+        self.log("[PID] tornati i valori del profilo")
+
+    def _tune_dump(self):
+        vals = {key: float(sc.get()) for key, sc in self.tune_sl.items()}
+        self.log("[PID] da copiare in periph/torso.yaml: " +
+                 ", ".join(f"{('vel_max' if k == 'vel' else k)}: {v:g}" for k, v in vals.items()))
 
     def _toggle_no_lim(self):
         prof = self.prof.cfg(self.role).get("raw_ignore_pot", 0) if self.role else 0

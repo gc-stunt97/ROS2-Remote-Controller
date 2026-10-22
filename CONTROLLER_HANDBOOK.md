@@ -938,6 +938,12 @@ mouse, lo riavvia alla chiusura).
   si accende **solo da disarmato** con conferma, vale **solo in RAW** (in posizione le protezioni
   restano tutte); restano sovracorrente, fungo e heartbeat. Serve dopo un cambio motori, quando un
   colpo RAW porta il busto sui limiti logici in un secondo. Si spegne anche da armato;
+- scheda **PID** (22/10): slider per **kp/ki/kd** di pitch e roll, **velocità max** (manda
+  `vel_max` e `vel_banco`), **PWM max** (`duty_max`) e **PWM min/stacco** (`duty_min`). Si manda
+  al **rilascio** dello slider; con fw **≥ 0.2.9** queste chiavi **non disarmano** (le altre sì).
+  «valori del profilo» torna al repo, «scrivi valori nel log» stampa la riga da copiare in
+  `periph/torso.yaml`. Ogni cambio finisce anche nel registro come riga `{"t":"tune"}`.
+  «rimanda cfg» riporta gli slider ai valori del profilo;
 - ⚠️ **dopo un OTA o un riavvio del micro la plancia NON rimanda la cfg da sola** (il micro torna
   NON CALIBRATO): premere **«rimanda cfg»**. Da correggere. Lo span degli stick (`bench:`) si
   rilegge solo all'aggancio → dopo averlo cambiato si riapre la plancia;
