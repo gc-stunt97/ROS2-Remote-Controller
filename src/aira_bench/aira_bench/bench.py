@@ -633,10 +633,7 @@ class Bench:
         if self.estop:
             messagebox.showwarning("Fungo", "Il fungo EM STOP e' premuto.")
             return
-        mode = tel.get("mode", "pos")
-        if not messagebox.askyesno("Arma", f"Armare il busto in modo {mode.upper()}?\n"
-                                   "Mani lontane da leve e tiranti."):
-            return
+        # niente conferma (22/10, Giulio): al banco si arma e disarma di continuo
         if self.use_sl.get():                  # niente strappo all'arm: si parte da zero
             for sc in self.sl.values():
                 sc.set(0)
