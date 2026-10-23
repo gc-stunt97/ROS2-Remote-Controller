@@ -953,6 +953,10 @@ mouse, lo riavvia alla chiusura).
 - ⭐ **registro della telemetria** (20/10): da armato ogni riga `tel` (50 Hz) va in
   `~/.aira/bench_tel.jsonl` (dal 23/10: un file per sessione in `~/.aira/bench_tel/`, ultime 20, e la scheda log in `~/.aira/bench_log/`; il vecchio nome è un link all'ultima), tetto 50 MB → si tara l'anello sui dati
   (scp e grafico), non a occhio;
+- (23/10) scheda **funzioni**: Manuale / Twirl / oscillatori pitch-roll (altro asse fisso) /
+  **autocalibrazione** (`autocal.py`: sequenza come generatore nel giro a 20 Hz, passa da sola in
+  RAW e ritorno, file in `~/.aira/autocal/`, STOP o fault = disarmo). Slider con valore a destra
+  (helper `_slider`). Schermo remoto VNC: `desktop/README.md`;
 - **fungo** `/emergency_stop` (reliable + transient_local): disarma subito e blocca l'arm;
 - **stacca heartbeat**: simula il cavo che cade, il micro deve disarmarsi in 300 ms;
 - **calibrazione pot** a due pose (angolo dalla livella) → `~/.aira/periph/torso.yaml` + log con i
