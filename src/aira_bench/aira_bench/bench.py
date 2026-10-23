@@ -71,9 +71,11 @@ TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("pitch.ki", "pitch ki", 0.0
         ("duty_max", "PWM max motori", 0.10, 1.0, 0.01),
         ("vel", "vel max deg/s", 2.0, 120.0, 1.0), ("acc_max", "acc deg/s2", 10.0, 600.0, 10.0),
         ("duty_min", "PWM min stacco", 0.0, 0.30, 0.005),
-        ("stall.duty", "stallo duty", 0.20, 1.0, 0.01), ("stall.ms", "stallo ms", 200.0, 5000.0, 100.0), None,
+        ("stall.duty", "stallo duty", 0.20, 1.0, 0.01), ("stall.ms", "stallo ms", 200.0, 5000.0, 100.0),
+        ("comply", "cedevolezza 0=rigido", 0.0, 60.0, 1.0),     # fw >= 0.3.2: deg di cedimento per PWM di spinta
         ("gap.duty", "gioco duty 0=off", 0.0, 0.30, 0.005), ("gap.i_on", "gioco presa A", 0.05, 1.0, 0.01),
-        ("gap.ms", "gioco max ms", 50.0, 600.0, 10.0)]
+        ("gap.ms", "gioco max ms", 50.0, 600.0, 10.0),
+        ("hold_u", "soglia carico PWM", 0.0, 0.20, 0.005)]       # fw >= 0.3.2: sotto = a riposo (hold)
 TEL_LOG_MAX = 50 * 1024 * 1024                             # ~1 MB/min: circa 50 min di prove
 MICRO_GONE_S = 5.0        # s senza annunci -> la scheda in lista diventa "assente"
 
