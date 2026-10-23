@@ -47,6 +47,7 @@ il profilo, lo comanda con gli stick e mostra cosa fa. Il micro non sa di essere
   grigio = assente. **aggancia** per sceglierne una; *AGGANCIATO* = quella in uso.
 - **cal / OTA** — calibrazione dei pot e aggiornamento firmware (vedi §4).
 - **slider** — comando a mano senza stick (vedi §3).
+- **funzioni** — movimenti automatici (Twirl, oscillatori) al posto del joystick (vedi §3).
 - **PID** — taratura dal vivo (vedi la sezione della parte, es. §6.3 per il busto).
 
 Ogni slider ha il **nome a sinistra e il valore a destra**, sopra la barra: col dito sulla barra
@@ -59,6 +60,19 @@ il numero resta leggibile.
   casella *comanda con gli slider (stick esclusi)*. Utile per un valore **fisso e ripetibile**
   (prove registrate, tester, misure di corrente). All'arm e al cambio di sorgente gli slider
   tornano a zero. **slider a zero** li azzera a mano.
+- **Funzioni (scheda funzioni):** scegli **Manuale (joystick)**, **Twirl**, **Oscillatore pitch** o
+  **Oscillatore roll**, poi **AVVIA** (serve il micro armato in modo posizione). Mentre una funzione
+  gira stick e slider sono **ignorati**.
+  - Avvio: il target parte dalla posa misurata, va **piano** (10°/s) al punto di partenza, poi la
+    velocità sale in ~1,5 s. **STOP** (o scegliere Manuale): torna piano al centro, poi comanda di
+    nuovo il joystick. Disarmo, fault o fungo la interrompono subito.
+  - **periodo s** = secondi per un giro (Twirl) o un'oscillazione completa; **swing pitch / roll** =
+    ampiezza in gradi (Twirl usa entrambi, ogni oscillatore il suo). Si cambiano anche in corsa.
+    **twirl antiorario** inverte il verso.
+  - Sulle barre il **blu** (target) segue la funzione, il **giallo** (setpoint) è la rampa del micro,
+    il **verde** è il busto vero. Se il verde resta indietro, a limitare sono **vel max / acc / PWM
+    max** della scheda PID: si possono cambiare mentre la funzione gira, cambiare scheda non ferma
+    niente. Avvio e stop finiscono nel registro della telemetria.
 - **RAW: a fondo = 100% duty** — di norma in RAW il fondo corsa è il 30%. Si accende solo da
   disarmato, chiede conferma. ⚠️ 12 V pieni.
 - **RAW: ignora pot e limiti (diagnosi)** — in RAW il micro non guarda più pot e limiti (resta solo

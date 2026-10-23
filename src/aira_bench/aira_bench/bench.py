@@ -76,6 +76,13 @@ TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("pitch.ki", "pitch ki", 0.0
         ("gap.duty", "gioco duty 0=off", 0.0, 0.30, 0.005), ("gap.i_on", "gioco presa A", 0.05, 1.0, 0.01),
         ("gap.ms", "gioco max ms", 50.0, 600.0, 10.0),
         ("hold_u", "soglia carico PWM", 0.0, 0.20, 0.005)]       # fw >= 0.3.2: sotto = a riposo (hold)
+# scheda funzioni (23/10): movimenti automatici calcolati QUI e mandati come target a 20 Hz, cosi'
+# la velocita' vera la limitano comunque vel_max/acc/PWM del micro (scheda PID)
+FUNCS = (("manual", "Manuale (joystick)"), ("twirl", "Twirl"), ("osc_p", "Oscillatore pitch"),
+         ("osc_r", "Oscillatore roll"))
+FUNC_APPROACH = 10.0      # deg/s del target per arrivare al punto di partenza e tornare al centro
+FUNC_SPINUP_S = 1.5       # s per portare la velocita' angolare da 0 a quella chiesta
+FUNC_AMP_RATE = 10.0      # deg/s: un cambio di swing da slider arriva cosi', non a scalino
 TEL_LOG_MAX = 50 * 1024 * 1024                             # ~1 MB/min: circa 50 min di prove
 MICRO_GONE_S = 5.0        # s senza annunci -> la scheda in lista diventa "assente"
 
@@ -426,6 +433,8 @@ class Bench:
         self._btn(tab_sl, "slider a zero",
                   lambda: [sc.set(0) for sc in self.sl.values()]).pack(pady=4)
 
+        self._build_funcs()
+
         # scheda PID: si manda al RILASCIO dello slider (set() da programma non manda nulla)
         tab_pid = tk.Frame(self.tabs, bg=BG)
         self.tabs.add(tab_pid, text="PID")
@@ -478,6 +487,151 @@ class Bench:
         self.logbox = scrolledtext.ScrolledText(tab_log, width=47, height=20, bg=INK, fg=FG,
                                                 font=("TkFixedFont", 9))
         self.logbox.pack(fill=tk.BOTH, expand=True)
+
+    def _build_funcs(self):
+        tab = tk.Frame(self.tabs, bg=BG)
+        self.tabs.add(tab, text="funzioni")
+        self.func_sel = tk.StringVar(value="manual")
+        sel = tk.Frame(tab, bg=BG)
+        sel.pack(fill=tk.X, pady=(4, 0))
+        for n, (val, txt) in enumerate(FUNCS):
+            tk.Radiobutton(sel, text=txt, value=val, variable=self.func_sel, bg=BG, fg=FG,
+                           selectcolor=BTN, activebackground=BG, activeforeground=FG,
+                           command=self._func_selected).grid(row=n // 2, column=n % 2, sticky="w")
+        row = tk.Frame(tab, bg=BG)
+        row.pack(fill=tk.X, pady=4)
+        self.func_btn = tk.Button(row, text="AVVIA", bg=OK_COL, fg=INK, relief=tk.FLAT, width=8,
+                                  font=("TkDefaultFont", 11, "bold"), command=self._func_toggle)
+        self.func_btn.pack(side=tk.LEFT)
+        self.func_ccw = tk.BooleanVar(value=False)
+        tk.Checkbutton(row, text="twirl antiorario", variable=self.func_ccw, bg=BG, fg=FG,
+                       selectcolor=BTN, activebackground=BG, activeforeground=FG).pack(side=tk.LEFT, padx=8)
+        self.func_lbl = tk.Label(tab, text="", bg=BG, fg=SP_COL, font=("TkFixedFont", 9), anchor="w")
+        self.func_lbl.pack(fill=tk.X)
+        # gli slider valgono subito, anche in corsa: la funzione li rilegge a ogni giro
+        self.func_sl = {}
+        for key, label, lo, hi, step, v0 in (
+                ("period", "periodo s (un giro / un'oscillazione)", 1.0, 20.0, 0.5, 6.0),
+                ("sw_p", "swing pitch deg", 0.0, 30.0, 0.5, 10.0),
+                ("sw_r", "swing roll deg", 0.0, 19.0, 0.5, 8.0)):
+            box, sc = self._slider(tab, label, lo, hi, step, 360)
+            box.pack(pady=2)
+            sc.set(v0)
+            self.func_sl[key] = sc
+        tk.Label(tab, text="la velocita' vera la limitano vel max / acc / PWM della scheda PID",
+                 bg=BG, fg=GRID, font=("TkFixedFont", 8)).pack(anchor="w", pady=(4, 0))
+        self.func = None           # funzione in corso (dict con fase e stato); None = manuale
+
+    # ------------------------------------------------------------ funzioni automatiche
+    def _func_selected(self):
+        if self.func_sel.get() == "manual" and self.func:
+            self._func_stop("scelto Manuale")
+
+    def _func_toggle(self):
+        if self.func:
+            self._func_stop("stop")
+            return
+        kind = self.func_sel.get()
+        if kind == "manual":
+            self.log("[funzioni] scegli una funzione (Manuale = joystick, gia' attivo)")
+            return
+        tel, age = self._tel()
+        if age > 0.5 or tel.get("st") != "armato" or tel.get("mode") != "pos":
+            messagebox.showwarning("Funzioni", "Serve il micro ARMATO in modo posizione.")
+            return
+        # si parte dalla posa MISURATA: il target non salta
+        self.func = {"kind": kind, "phase": "avvicinamento", "p": float(tel.get("p", 0.0)),
+                     "r": float(tel.get("r", 0.0)), "th": 0.0, "w": 0.0, "amp_p": None,
+                     "amp_r": None, "t": time.time()}
+        if kind == "twirl":
+            # si entra nell'ellisse dal punto piu' vicino alla posa attuale (meno strada)
+            ap, ar = self._func_amp_targets()
+            p, r = self.func["p"], self.func["r"]
+            if ap > 0 and ar > 0 and (p or r):
+                self.func["th"] = math.atan2(r / ar, p / ap)
+        self.func_btn.config(text="STOP", bg=ERR_COL)
+        self._func_mark("start")
+        self.log(f"[funzioni] {kind}: avvicinamento al punto di partenza")
+
+    def _func_stop(self, why):
+        if self.func and self.func["phase"] != "ritorno":
+            self.func["phase"] = "ritorno"
+            self._func_mark("stop")
+            self.log(f"[funzioni] {why}: ritorno piano al centro")
+
+    def _func_end(self, why=None):
+        """Fine della funzione. Con `why` (disarmo / fault / fungo) e' un'interruzione: niente
+        ritorno al centro, il micro e' gia' fermo."""
+        if self.func and why:
+            self.log(f"[funzioni] interrotta ({why})")
+            self._func_mark("abort")
+        self.func = None
+        self.func_btn.config(text="AVVIA", bg=OK_COL)
+        self.func_sel.set("manual")
+
+    def _func_mark(self, ev):
+        f = self.func or {}
+        self._tel_mark({"t": "func", "ev": ev, "kind": f.get("kind"),
+                        **{k: float(sc.get()) for k, sc in self.func_sl.items()},
+                        "ccw": bool(self.func_ccw.get())})
+
+    def _func_amp_targets(self):
+        kind = self.func["kind"] if self.func else self.func_sel.get()
+        sp, sr = float(self.func_sl["sw_p"].get()), float(self.func_sl["sw_r"].get())
+        return (sp if kind in ("twirl", "osc_p") else 0.0), (sr if kind in ("twirl", "osc_r") else 0.0)
+
+    @staticmethod
+    def _approach(cur, goal, step):
+        dp, dr = goal[0] - cur[0], goal[1] - cur[1]
+        d = math.hypot(dp, dr)
+        if d <= step:
+            return goal, True
+        return (cur[0] + dp / d * step, cur[1] + dr / d * step), False
+
+    def _func_step(self):
+        """Un giro (20 Hz): aggiorna la funzione e ritorna il target (pitch, roll).
+        Twirl: ellisse pitch = A*cos, roll = A*sin (il verso lo da' il segno della velocita').
+        Oscillatori: coseno sul loro asse, cosi' si parte dal picco a velocita' zero."""
+        f = self.func
+        now = time.time()
+        dt = min(0.2, now - f["t"])
+        f["t"] = now
+        tp, tr = self._func_amp_targets()
+        if f["amp_p"] is None:
+            f["amp_p"], f["amp_r"] = tp, tr
+        # swing cambiato dallo slider: ci si arriva a velocita' limitata, non a scalino
+        for k, tgt in (("amp_p", tp), ("amp_r", tr)):
+            f[k] += max(-FUNC_AMP_RATE * dt, min(FUNC_AMP_RATE * dt, tgt - f[k]))
+        point = (f["amp_p"] * math.cos(f["th"]), f["amp_r"] * math.sin(f["th"]))
+        if f["phase"] == "avvicinamento":
+            (f["p"], f["r"]), arrived = self._approach((f["p"], f["r"]), point, FUNC_APPROACH * dt)
+            if arrived:
+                f["phase"] = "in corsa"
+                self.log(f"[funzioni] {f['kind']}: partita")
+        elif f["phase"] == "in corsa":
+            w_full = 2.0 * math.pi / max(0.5, float(self.func_sl["period"].get()))
+            if f["kind"] == "twirl" and self.func_ccw.get():
+                w_full = -w_full
+            # avvio (e cambi di periodo) dolci: la velocita' angolare sale in FUNC_SPINUP_S
+            dw = abs(w_full) / FUNC_SPINUP_S * dt
+            f["w"] += max(-dw, min(dw, w_full - f["w"]))
+            f["th"] += f["w"] * dt
+            f["p"], f["r"] = f["amp_p"] * math.cos(f["th"]), f["amp_r"] * math.sin(f["th"])
+        else:                                   # ritorno al centro
+            (f["p"], f["r"]), arrived = self._approach((f["p"], f["r"]), (0.0, 0.0), FUNC_APPROACH * dt)
+            if arrived:
+                self.log("[funzioni] al centro: comanda di nuovo il joystick")
+                self._func_end()
+                return 0.0, 0.0
+        return f["p"], f["r"]
+
+    def _func_show(self):
+        f = self.func
+        if not f:
+            self.func_lbl.config(text="comanda il joystick" if self.func_sel.get() == "manual"
+                                 else "pronta: AVVIA (micro armato, modo posizione)")
+            return
+        self.func_lbl.config(text=f"{f['kind']}: {f['phase']}   target p {f['p']:+6.1f}  r {f['r']:+6.1f}")
 
     # ------------------------------------------------------------ log (thread-safe)
     def log(self, text):
@@ -710,9 +864,12 @@ class Bench:
         self.link.send(msg)
         self.log(f"[PID] {key} = {v:g}")
         # nel registro della telemetria, per sapere da quando valgono i valori nuovi
+        self._tel_mark({"t": "tune", "key": key, "v": v})
+
+    def _tel_mark(self, obj):
+        """Riga di contesto nel registro della telemetria (cambi PID, avvio/stop funzioni)."""
         if self.link.tel_log:
-            self.link.tel_log.write((json.dumps({"t": "tune", "time": time.time(), "key": key,
-                                                 "v": v}) + "\n").encode())
+            self.link.tel_log.write((json.dumps({**obj, "time": time.time()}) + "\n").encode())
             self.link.tel_log.flush()
 
     def _tune_reset(self):
@@ -787,6 +944,15 @@ class Bench:
 
     def _send_command(self, tel):
         if tel.get("st") != "armato" or self.estop:
+            if self.func:
+                self._func_end("fungo" if self.estop else (tel.get("f") or tel.get("st") or "offline"))
+            return
+        if self.func:
+            if tel.get("mode") != "pos":
+                self._func_end("non piu' in modo posizione")
+                return
+            p, r = self._func_step()          # joystick e slider ignorati
+            self.link.send({"t": "cmd", "p": round(p, 2), "r": round(r, 2)})
             return
         joy_live = (self.node is not None and not self.use_sl.get()
                     and time.time() - self.joy_time < JOY_TIMEOUT)
@@ -941,6 +1107,7 @@ class Bench:
                      f"saturo {tel.get('sat')}   heartbeat visto dal micro: {wd} ms fa"
                      + ("   ⚠ FUNGO" if self.estop else ""))
         self._send_command(tel if live else {})
+        self._func_show()
         self.root.after(50, self._tick)    # 20 Hz di comandi, come l'heartbeat
 
     def _on_close(self):
