@@ -289,6 +289,26 @@ class Bench:
         return tk.Button(parent, text=text, command=cmd, bg=BTN, fg=FG, relief=tk.FLAT,
                          activebackground=GRID, **kw)
 
+    def _slider(self, parent, label, lo, hi, step, length, font=("TkFixedFont", 9), width=15):
+        """Slider con nome a SINISTRA e valore a DESTRA su una riga sola, sopra la barra (23/10,
+        Giulio): il valore di Tk sta sopra il cursore, sotto il dito. Ritorna (riquadro, Scale)."""
+        box = tk.Frame(parent, bg=BG)
+        head = tk.Frame(box, bg=BG)
+        head.pack(fill=tk.X)
+        tk.Label(head, text=label, bg=BG, fg=FG, font=font).pack(side=tk.LEFT)
+        val = tk.Label(head, text="", bg=BG, fg=SP_COL, font=font)
+        val.pack(side=tk.RIGHT)
+        digits = max(0, -math.floor(math.log10(step) + 1e-9)) if step < 1 else 0
+        var = tk.DoubleVar(value=lo)
+        # la variabile cambia sia trascinando sia con set() da programma: il numero segue sempre
+        var.trace_add("write", lambda *_: val.config(text=f"{var.get():.{digits}f}"))
+        sc = tk.Scale(box, from_=lo, to=hi, resolution=step, orient=tk.HORIZONTAL, length=length,
+                      variable=var, showvalue=0, bg=BG, fg=FG, troughcolor=BTN,
+                      highlightthickness=0, width=width)
+        sc.pack(fill=tk.X)
+        var.set(max(lo, min(hi, 0.0)))
+        return box, sc
+
     def _build(self):
         top = tk.Frame(self.root, bg=BG)
         top.pack(fill=tk.X, padx=8, pady=(6, 2))
@@ -400,10 +420,8 @@ class Bench:
                        activebackground=BG, activeforeground=FG).pack(anchor="w")
         self.sl = {}
         for name in ("pitch / mot A", "roll / mot B"):
-            sc = tk.Scale(tab_sl, from_=-1.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL,
-                          length=360, label=name, bg=BG, fg=FG, troughcolor=BTN,
-                          highlightthickness=0)
-            sc.pack(pady=2)
+            box, sc = self._slider(tab_sl, name, -1.0, 1.0, 0.01, 360)
+            box.pack(pady=2)
             self.sl[name] = sc
         self._btn(tab_sl, "slider a zero",
                   lambda: [sc.set(0) for sc in self.sl.values()]).pack(pady=4)
@@ -418,10 +436,8 @@ class Bench:
             if item is None:
                 continue
             key, label, lo, hi, step = item
-            sc = tk.Scale(grid, from_=lo, to=hi, resolution=step, orient=tk.HORIZONTAL,
-                          length=132, label=label, bg=BG, fg=FG, troughcolor=BTN,
-                          highlightthickness=0, font=("TkFixedFont", 8), width=10)
-            sc.grid(row=n // 3, column=n % 3, padx=1)   # 3 colonne: una riga per gruppo
+            box, sc = self._slider(grid, label, lo, hi, step, 132, font=("TkFixedFont", 8), width=10)
+            box.grid(row=n // 3, column=n % 3, padx=2, pady=1, sticky="we")   # 3 colonne: una riga per gruppo
             sc.bind("<ButtonRelease-1>", functools.partial(self._tune_send, key))
             self.tune_sl[key] = sc
         row = tk.Frame(tab_pid, bg=BG)

@@ -817,6 +817,9 @@ robot funzioni.
 
 ## 14. Banco dei micro AIRA — il telecomando finge di essere il mini PC (DECISO 24/09/2026)
 
+> 📘 **Come si usa** (pulsanti, indicatori, slider, procedure, una sezione per parte del robot):
+> `MANUALE_PLANCIA.md`. Qui sotto resta il perché delle scelte.
+
 > ✅ **Programma scritto il 05/10/2026** (sez. 14.5), ✅ **provato con la scheda vera l'08/10**. Il
 > lato robot — scheda, protocollo, slave, OTA — sta in `AIRA_HANDBOOK.md` **§14**; il banco in
 > **§14.12**; il primo cliente è il **busto** (§13.3: cardano + due tergicristalli, pitch + roll).
