@@ -951,7 +951,7 @@ mouse, lo riavvia alla chiusura).
   NON CALIBRATO): premere **«rimanda cfg»**. Da correggere. Lo span degli stick (`bench:`) si
   rilegge solo all'aggancio → dopo averlo cambiato si riapre la plancia;
 - ⭐ **registro della telemetria** (20/10): da armato ogni riga `tel` (50 Hz) va in
-  `~/.aira/bench_tel.jsonl`, azzerato a ogni avvio, tetto 50 MB → si tara l'anello sui dati
+  `~/.aira/bench_tel.jsonl` (dal 23/10: un file per sessione in `~/.aira/bench_tel/`, ultime 20, e la scheda log in `~/.aira/bench_log/`; il vecchio nome è un link all'ultima), tetto 50 MB → si tara l'anello sui dati
   (scp e grafico), non a occhio;
 - **fungo** `/emergency_stop` (reliable + transient_local): disarma subito e blocca l'arm;
 - **stacca heartbeat**: simula il cavo che cade, il micro deve disarmarsi in 300 ms;

@@ -115,9 +115,14 @@ il numero resta leggibile.
 3. **valori del profilo**: torna ai valori del repo (e li rimanda al micro).
 
 **Registrare una prova**
-- Da armato la plancia registra la telemetria a 50 Hz in `~/.aira/bench_tel.jsonl`, con una riga
-  per ogni slider PID mosso. Il file **si azzera a ogni avvio della plancia**: prima di riaprirla
-  dimmelo e me lo copio. Prova tipo: 10 s fermo, poi i gradini, poi la spinta a mano.
+- **Niente si perde chiudendo la plancia:** ogni avvio è una **sessione** con la sua data, e si
+  tengono le ultime 20.
+  - **Telemetria** da armato a 50 Hz, con una riga per ogni slider PID mosso e per ogni avvio o stop
+    di funzione: `~/.aira/bench_tel/tel_<data>.jsonl`. `~/.aira/bench_tel.jsonl` punta sempre
+    all'ultima sessione.
+  - **Scheda log**, compreso «scrivi valori nel log»: `~/.aira/bench_log/log_<data>.txt`.
+  - Prova tipo: 10 s fermo, poi i gradini, poi la spinta a mano (o l'autocalibrazione, che fa
+    tutto da sola).
 
 ## 5. Problemi noti
 

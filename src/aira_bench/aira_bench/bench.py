@@ -64,7 +64,13 @@ OTA_HTTP_PORT = 8070
 JOY_TIMEOUT = 1.0         # s senza messaggi joystick -> comandano gli slider
 JOY_DRAIN = 20            # callback ROS svuotate a ogni giro di _tick (vedi li')
 STICK_DZ = 0.08           # zona morta degli stick (a riposo stanno entro +-0.04)
-TEL_LOG = os.path.expanduser("~/.aira/bench_tel.jsonl")   # telemetria da armato, 50 Hz
+# registri PER SESSIONE (23/10): uno per ogni avvio della plancia, col nome datato, cosi' chiudere
+# e riaprire non cancella niente. Si tengono gli ultimi SESSION_KEEP di ciascun tipo
+SESSION = time.strftime("%Y%m%d_%H%M%S")
+TEL_DIR = os.path.expanduser("~/.aira/bench_tel")         # telemetria da armato, 50 Hz
+LOG_DIR = os.path.expanduser("~/.aira/bench_log")         # copia della scheda log
+TEL_LATEST = os.path.expanduser("~/.aira/bench_tel.jsonl")  # link all'ultima sessione (nome storico)
+SESSION_KEEP = 20
 # scheda PID (22/10): parametri di taratura regolabili da armato (il fw >= 0.2.9 non disarma
 # per queste chiavi). (chiave cfg, etichetta, min, max, passo); "vel" manda vel_max E vel_banco
 # None = casella vuota nella griglia (3 colonne, una riga per gruppo)
@@ -110,6 +116,18 @@ MEAS_COL, TGT_COL, SP_COL = "#a6e3a1", "#89b4fa", "#f9e2af"
 
 
 # ---------------------------------------------------------------------- profili
+def open_session_file(folder, prefix, ext, mode):
+    """Apre <folder>/<prefix>_<SESSION>.<ext> e cancella i piu' vecchi oltre SESSION_KEEP."""
+    os.makedirs(folder, exist_ok=True)
+    old = sorted(f for f in os.listdir(folder) if f.startswith(prefix + "_") and f.endswith("." + ext))
+    for f in old[:max(0, len(old) - (SESSION_KEEP - 1))]:
+        try:
+            os.remove(os.path.join(folder, f))
+        except OSError:
+            pass
+    return open(os.path.join(folder, f"{prefix}_{SESSION}.{ext}"), mode)
+
+
 def load_yaml(path):
     if yaml is None:
         raise RuntimeError("manca PyYAML: sudo apt install python3-yaml")
@@ -176,11 +194,17 @@ class Link:
         self.hb_enabled = True
         self.on_hello = None      # callback(mac, hello) chiamata dal thread di rete
         self.on_ack = None
-        # registro della telemetria da ARMATO, per tarare l'anello sui numeri veri (20/10).
-        # Si riparte da vuoto a ogni avvio della plancia; tetto TEL_LOG_MAX per non riempire il disco.
+        # registro della telemetria da ARMATO, per tarare l'anello sui numeri veri (20/10). Un file
+        # per sessione (prima si azzerava a ogni avvio); tetto TEL_LOG_MAX per non riempire il disco.
+        # ~/.aira/bench_tel.jsonl resta come link all'ultima sessione
         try:
-            os.makedirs(os.path.dirname(TEL_LOG), exist_ok=True)
-            self.tel_log = open(TEL_LOG, "wb")
+            self.tel_log = open_session_file(TEL_DIR, "tel", "jsonl", "wb")
+            try:
+                if os.path.islink(TEL_LATEST) or os.path.exists(TEL_LATEST):
+                    os.remove(TEL_LATEST)
+                os.symlink(self.tel_log.name, TEL_LATEST)
+            except (OSError, NotImplementedError):
+                pass
         except OSError:
             self.tel_log = None
         self.extra_log = None     # file aperto dall'autocalibrazione: telemetria completa, anche da disarmato
@@ -286,6 +310,10 @@ class Bench:
         self.capture = {}          # ("pitch","A") -> (raw, angolo)
         self.http = None
 
+        try:                       # copia su file della scheda log, una per sessione
+            self.log_file = open_session_file(LOG_DIR, "log", "txt", "w")
+        except OSError:
+            self.log_file = None
         self.root = tk.Tk()
         self.root.title("AIRA — banco micro")
         self.root.configure(bg=BG)
@@ -309,6 +337,7 @@ class Bench:
             node.create_subscription(Bool, "/emergency_stop", self._on_estop, latched)
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.log(f"[banco] sessione {SESSION}: log in {LOG_DIR}, telemetria in {TEL_DIR}")
         self.log(f"[banco] profili da {self.prof.dir}"
                  + ("" if node else "  (SENZA ROS: comandano gli slider)"))
         self.log("[banco] barre: verde = misurato, blu = target, giallo = setpoint (rampa)")
@@ -804,6 +833,12 @@ class Bench:
             pass
 
     def _append_log(self, line):
+        if self.log_file:
+            try:
+                self.log_file.write(line)
+                self.log_file.flush()
+            except (OSError, ValueError):
+                pass
         self.logbox.insert(tk.END, line)
         if int(self.logbox.index("end-1c").split(".")[0]) > 2000:
             self.logbox.delete("1.0", "500.0")
