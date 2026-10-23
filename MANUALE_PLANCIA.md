@@ -110,8 +110,9 @@ il numero resta leggibile.
 
 **Tarare dal vivo (scheda PID)**
 1. Arma, muovi lo slider: il valore parte **al rilascio** del dito (cambiarli da armato non disarma).
-2. Si perde tutto a **rimanda cfg**, al riaggancio o alla chiusura: quando sei contento premi
-   **scrivi valori nel log** e mi dici di ricopiarli nel profilo.
+2. Il **micro** li dimentica a **rimanda cfg**, al riaggancio o al riavvio: lì tornano quelli del
+   profilo. Quando sei contento premi **scrivi valori nel log**: la riga resta anche nel file della
+   sessione (`~/.aira/bench_log/`), e mi dici di ricopiarli nel profilo.
 3. **valori del profilo**: torna ai valori del repo (e li rimanda al micro).
 
 **Registrare una prova**
