@@ -119,5 +119,12 @@ mkdir -p ~/.config/autostart && cp desktop/AIRA-VNC.desktop ~/.config/autostart/
 ~/vnc-plancia.sh &                  # oppure al prossimo login parte da solo
 ```
 
-Dal PC (TigerVNC / RealVNC Viewer): `Controller` sulla WiFi, `192.168.10.10` col cavo sullo
-switch del robot. Togliere: `rm ~/.config/autostart/AIRA-VNC.desktop` e `pkill x11vnc`.
+Accetta solo la rete del robot (`192.168.10.x`) e il tunnel SSH; immagine scalata x2 (1600x960).
+
+Dal PC (TigerVNC Viewer; sul portatile ci sono `VNC robot (cavo).bat` e `VNC robot (WiFi).bat`
+sul desktop):
+- **cavo sullo switch del robot:** VNC su `192.168.10.10`
+- **WiFi (ufficio):** tunnel cifrato, poi VNC su `localhost::5901`:
+  `ssh -o HostKeyAlias=192.168.10.10 -N -L 5901:localhost:5900 giulio@Controller`
+
+Togliere: `rm ~/.config/autostart/AIRA-VNC.desktop` e `pkill x11vnc`.
