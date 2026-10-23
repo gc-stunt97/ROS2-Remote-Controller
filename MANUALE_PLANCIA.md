@@ -66,13 +66,27 @@ il numero resta leggibile.
   - Avvio: il target parte dalla posa misurata, va **piano** (10°/s) al punto di partenza, poi la
     velocità sale in ~1,5 s. **STOP** (o scegliere Manuale): torna piano al centro, poi comanda di
     nuovo il joystick. Disarmo, fault o fungo la interrompono subito.
-  - **periodo s** = secondi per un giro (Twirl) o un'oscillazione completa; **swing pitch / roll** =
-    ampiezza in gradi (Twirl usa entrambi, ogni oscillatore il suo). Si cambiano anche in corsa.
-    **twirl antiorario** inverte il verso.
+  - Si vedono solo gli slider della funzione scelta, e si cambiano anche in corsa:
+    - **Twirl:** **periodo s** (secondi per un giro), **swing pitch** e **swing roll** (ampiezza in
+      gradi), casella **twirl antiorario** per il verso.
+    - **Oscillatore pitch:** periodo, **swing pitch**, **roll fisso** = il roll resta fermo lì mentre
+      il pitch oscilla. **Oscillatore roll:** uguale a parti invertite (**pitch fisso**).
+  - Mentre una funzione gira non se ne sceglie un'altra: prima **STOP**.
   - Sulle barre il **blu** (target) segue la funzione, il **giallo** (setpoint) è la rampa del micro,
     il **verde** è il busto vero. Se il verde resta indietro, a limitare sono **vel max / acc / PWM
     max** della scheda PID: si possono cambiare mentre la funzione gira, cambiare scheda non ferma
     niente. Avvio e stop finiscono nel registro della telemetria.
+- **Autocalibrazione (scheda funzioni):** il busto fa da solo, in ~4-5 minuti, le prove che
+  facevamo a mano: **fermo 10 s** (rumore dei pot, corrente a riposo), **gradini** di roll e pitch
+  (3° e 10/15°: tempo di arrivo, sovraelongazione, errore residuo), **inversioni** ±2° (ritardo =
+  il gioco), **sinusoidi** con periodo 8→4→2→1 s (fin dove segue: guadagno e ritardo) e, con la
+  casella **includi RAW (stacco)**, il duty che sale piano finché il busto si muove (stop a 2° sul
+  pitch, 5° sul roll) = lo **stacco** per asse e verso. Chiede conferma: busto libero, fungo a portata.
+  - Si avvia armato in modo posizione e coi pot calibrati; passa da sola in RAW e ritorno.
+  - **STOP**, fault, fungo o telemetria persa: **disarma** e la lascia lì (riarmare a mano).
+  - Risultati riga per riga nel **log** e riassunto alla fine; file in `~/.aira/autocal/`
+    (`autocal_<data>.jsonl` = risultati, `..._tel.jsonl` = telemetria completa): **non si
+    azzerano**, me li copio io per i grafici. I valori PID in uso finiscono nel file.
 - **RAW: a fondo = 100% duty** — di norma in RAW il fondo corsa è il 30%. Si accende solo da
   disarmato, chiede conferma. ⚠️ 12 V pieni.
 - **RAW: ignora pot e limiti (diagnosi)** — in RAW il micro non guarda più pot e limiti (resta solo

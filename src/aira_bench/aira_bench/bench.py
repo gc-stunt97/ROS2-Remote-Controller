@@ -39,6 +39,11 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 try:
+    from aira_bench import autocal
+except ImportError:  # lanciato come script (python3 bench.py)
+    import autocal
+
+try:
     import yaml
 except ImportError:  # pragma: no cover
     yaml = None
@@ -79,7 +84,19 @@ TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("pitch.ki", "pitch ki", 0.0
 # scheda funzioni (23/10): movimenti automatici calcolati QUI e mandati come target a 20 Hz, cosi'
 # la velocita' vera la limitano comunque vel_max/acc/PWM del micro (scheda PID)
 FUNCS = (("manual", "Manuale (joystick)"), ("twirl", "Twirl"), ("osc_p", "Oscillatore pitch"),
-         ("osc_r", "Oscillatore roll"))
+         ("osc_r", "Oscillatore roll"), ("autocal", "Autocalibrazione"))
+# slider visibili per funzione: un oscillatore ha il SUO swing e l'altro asse FERMO in un punto
+FUNC_SLIDERS = {"twirl": ("period", "sw_p", "sw_r"), "osc_p": ("period", "sw_p", "pos_r"),
+                "osc_r": ("period", "sw_r", "pos_p")}
+FUNC_NOTES = {
+    "twirl": "la velocita' vera la limitano vel max / acc / PWM della scheda PID",
+    "osc_p": "oscilla il pitch col roll fermo al valore scelto\n"
+             "la velocita' vera la limitano vel max / acc / PWM della scheda PID",
+    "osc_r": "oscilla il roll col pitch fermo al valore scelto\n"
+             "la velocita' vera la limitano vel max / acc / PWM della scheda PID",
+    "autocal": "~4-5 min: fermo, gradini, inversioni, sinusoidi, (RAW) stacco.\n"
+               "Risultati nel log e in ~/.aira/autocal/ (non si azzerano). STOP = disarmo",
+}
 FUNC_APPROACH = 10.0      # deg/s del target per arrivare al punto di partenza e tornare al centro
 FUNC_SPINUP_S = 1.5       # s per portare la velocita' angolare da 0 a quella chiesta
 FUNC_AMP_RATE = 10.0      # deg/s: un cambio di swing da slider arriva cosi', non a scalino
@@ -166,6 +183,7 @@ class Link:
             self.tel_log = open(TEL_LOG, "wb")
         except OSError:
             self.tel_log = None
+        self.extra_log = None     # file aperto dall'autocalibrazione: telemetria completa, anche da disarmato
         self._stop = threading.Event()
         threading.Thread(target=self._rx, daemon=True).start()
         threading.Thread(target=self._hb, daemon=True).start()
@@ -217,6 +235,12 @@ class Link:
                 if self.tel_log and msg.get("st") == "armato" and self.tel_log.tell() < TEL_LOG_MAX:
                     self.tel_log.write(data.rstrip(b"\0\r\n") + b"\n")
                     self.tel_log.flush()
+                extra = self.extra_log
+                if extra:
+                    try:
+                        extra.write(data.rstrip(b"\0\r\n") + b"\n")
+                    except (ValueError, OSError):   # chiuso dall'altro thread a fine prova
+                        pass
             elif t == "log":
                 self.log(f"[micro] {msg.get('m', '')}")
             elif t == "ack":
@@ -503,31 +527,76 @@ class Bench:
         self.func_btn = tk.Button(row, text="AVVIA", bg=OK_COL, fg=INK, relief=tk.FLAT, width=8,
                                   font=("TkDefaultFont", 11, "bold"), command=self._func_toggle)
         self.func_btn.pack(side=tk.LEFT)
+        # caselle che dipendono dalla funzione scelta (una sola visibile per volta)
         self.func_ccw = tk.BooleanVar(value=False)
-        tk.Checkbutton(row, text="twirl antiorario", variable=self.func_ccw, bg=BG, fg=FG,
-                       selectcolor=BTN, activebackground=BG, activeforeground=FG).pack(side=tk.LEFT, padx=8)
-        self.func_lbl = tk.Label(tab, text="", bg=BG, fg=SP_COL, font=("TkFixedFont", 9), anchor="w")
+        self.ac_raw = tk.BooleanVar(value=True)
+        self.func_checks = {
+            "twirl": tk.Checkbutton(row, text="twirl antiorario", variable=self.func_ccw, bg=BG, fg=FG,
+                                    selectcolor=BTN, activebackground=BG, activeforeground=FG),
+            "autocal": tk.Checkbutton(row, text="includi RAW (stacco)", variable=self.ac_raw, bg=BG,
+                                      fg=FG, selectcolor=BTN, activebackground=BG, activeforeground=FG)}
+        self.func_lbl = tk.Label(tab, text="", bg=BG, fg=SP_COL, font=("TkFixedFont", 9), anchor="w",
+                                 justify="left")
         self.func_lbl.pack(fill=tk.X)
-        # gli slider valgono subito, anche in corsa: la funzione li rilegge a ogni giro
-        self.func_sl = {}
+        # slider: valgono subito, anche in corsa (la funzione li rilegge a ogni giro). Si vedono
+        # solo quelli della funzione scelta (FUNC_SLIDERS)
+        self.func_box = tk.Frame(tab, bg=BG)
+        self.func_box.pack(fill=tk.X)
+        self.func_sl, self.func_sl_box = {}, {}
         for key, label, lo, hi, step, v0 in (
                 ("period", "periodo s (un giro / un'oscillazione)", 1.0, 20.0, 0.5, 6.0),
                 ("sw_p", "swing pitch deg", 0.0, 30.0, 0.5, 10.0),
-                ("sw_r", "swing roll deg", 0.0, 19.0, 0.5, 8.0)):
-            box, sc = self._slider(tab, label, lo, hi, step, 360)
-            box.pack(pady=2)
+                ("sw_r", "swing roll deg", 0.0, 19.0, 0.5, 8.0),
+                ("pos_p", "pitch fisso deg", -25.0, 30.0, 0.5, 0.0),
+                ("pos_r", "roll fisso deg", -19.0, 19.0, 0.5, 0.0)):
+            box, sc = self._slider(self.func_box, label, lo, hi, step, 360)
             sc.set(v0)
-            self.func_sl[key] = sc
-        tk.Label(tab, text="la velocita' vera la limitano vel max / acc / PWM della scheda PID",
-                 bg=BG, fg=GRID, font=("TkFixedFont", 8)).pack(anchor="w", pady=(4, 0))
+            self.func_sl[key], self.func_sl_box[key] = sc, box
+        self.func_note = tk.Label(tab, text="", bg=BG, fg=GRID, font=("TkFixedFont", 8),
+                                  anchor="w", justify="left")
+        self.func_note.pack(fill=tk.X, pady=(4, 0))
         self.func = None           # funzione in corso (dict con fase e stato); None = manuale
+        self.autocal = None        # autocalibrazione in corso (autocal.Autocal)
+        self._func_layout()
+
+    def _func_layout(self):
+        kind = self.func_sel.get()
+        for key, box in self.func_sl_box.items():
+            box.pack_forget()
+        keys = FUNC_SLIDERS.get(kind, ())
+        # un riquadro rimasto vuoto in Tk non si restringe: lo si toglie del tutto
+        if keys:
+            self.func_box.pack(fill=tk.X, before=self.func_note)
+        else:
+            self.func_box.pack_forget()
+        for key in keys:
+            self.func_sl_box[key].pack(pady=2)
+        for k, cb in self.func_checks.items():
+            if k == kind:
+                cb.pack(side=tk.LEFT, padx=8)
+            else:
+                cb.pack_forget()
+        self.func_note.config(text=FUNC_NOTES.get(kind, ""))
 
     # ------------------------------------------------------------ funzioni automatiche
+    def _running_kind(self):
+        return "autocal" if self.autocal else (self.func["kind"] if self.func else None)
+
     def _func_selected(self):
-        if self.func_sel.get() == "manual" and self.func:
-            self._func_stop("scelto Manuale")
+        running = self._running_kind()
+        kind = self.func_sel.get()
+        if running and kind != running:
+            if kind == "manual" and self.func:
+                self._func_stop("scelto Manuale")
+            else:
+                self.func_sel.set(running)      # un'altra funzione: prima si ferma questa
+                self.log("[funzioni] prima ferma quella in corso (STOP)")
+        self._func_layout()
 
     def _func_toggle(self):
+        if self.autocal:
+            self._autocal_end("fermata con STOP")
+            return
         if self.func:
             self._func_stop("stop")
             return
@@ -539,13 +608,16 @@ class Bench:
         if age > 0.5 or tel.get("st") != "armato" or tel.get("mode") != "pos":
             messagebox.showwarning("Funzioni", "Serve il micro ARMATO in modo posizione.")
             return
+        if kind == "autocal":
+            self._autocal_start(tel)
+            return
         # si parte dalla posa MISURATA: il target non salta
         self.func = {"kind": kind, "phase": "avvicinamento", "p": float(tel.get("p", 0.0)),
-                     "r": float(tel.get("r", 0.0)), "th": 0.0, "w": 0.0, "amp_p": None,
-                     "amp_r": None, "t": time.time()}
+                     "r": float(tel.get("r", 0.0)), "th": 0.0, "w": 0.0, "amp": None,
+                     "t": time.time()}
         if kind == "twirl":
             # si entra nell'ellisse dal punto piu' vicino alla posa attuale (meno strada)
-            ap, ar = self._func_amp_targets()
+            ap, ar, _cp, _cr = self._func_shape()
             p, r = self.func["p"], self.func["r"]
             if ap > 0 and ar > 0 and (p or r):
                 self.func["th"] = math.atan2(r / ar, p / ap)
@@ -568,6 +640,7 @@ class Bench:
         self.func = None
         self.func_btn.config(text="AVVIA", bg=OK_COL)
         self.func_sel.set("manual")
+        self._func_layout()
 
     def _func_mark(self, ev):
         f = self.func or {}
@@ -575,10 +648,16 @@ class Bench:
                         **{k: float(sc.get()) for k, sc in self.func_sl.items()},
                         "ccw": bool(self.func_ccw.get())})
 
-    def _func_amp_targets(self):
+    def _func_shape(self):
+        """(ampiezza pitch, ampiezza roll, centro pitch, centro roll) della funzione.
+        Oscillatore pitch: oscilla il pitch, il roll sta FERMO al valore scelto (e viceversa)."""
         kind = self.func["kind"] if self.func else self.func_sel.get()
-        sp, sr = float(self.func_sl["sw_p"].get()), float(self.func_sl["sw_r"].get())
-        return (sp if kind in ("twirl", "osc_p") else 0.0), (sr if kind in ("twirl", "osc_r") else 0.0)
+        g = {k: float(sc.get()) for k, sc in self.func_sl.items()}
+        if kind == "twirl":
+            return g["sw_p"], g["sw_r"], 0.0, 0.0
+        if kind == "osc_p":
+            return g["sw_p"], 0.0, 0.0, g["pos_r"]
+        return 0.0, g["sw_r"], g["pos_p"], 0.0
 
     @staticmethod
     def _approach(cur, goal, step):
@@ -588,23 +667,31 @@ class Bench:
             return goal, True
         return (cur[0] + dp / d * step, cur[1] + dr / d * step), False
 
+    def _func_point(self, f):
+        """Posa della funzione all'angolo th. Twirl: ellisse pitch = cos, roll = sin (il verso lo
+        da' il segno della velocita'). Oscillatori: coseno sul loro asse, cosi' si parte dal picco
+        a velocita' zero."""
+        ap, ar, cp, cr = f["amp"]
+        th = f["th"]
+        if f["kind"] == "twirl":
+            return cp + ap * math.cos(th), cr + ar * math.sin(th)
+        return cp + ap * math.cos(th), cr + ar * math.cos(th)
+
     def _func_step(self):
-        """Un giro (20 Hz): aggiorna la funzione e ritorna il target (pitch, roll).
-        Twirl: ellisse pitch = A*cos, roll = A*sin (il verso lo da' il segno della velocita').
-        Oscillatori: coseno sul loro asse, cosi' si parte dal picco a velocita' zero."""
+        """Un giro (20 Hz): aggiorna la funzione e ritorna il target (pitch, roll)."""
         f = self.func
         now = time.time()
         dt = min(0.2, now - f["t"])
         f["t"] = now
-        tp, tr = self._func_amp_targets()
-        if f["amp_p"] is None:
-            f["amp_p"], f["amp_r"] = tp, tr
-        # swing cambiato dallo slider: ci si arriva a velocita' limitata, non a scalino
-        for k, tgt in (("amp_p", tp), ("amp_r", tr)):
-            f[k] += max(-FUNC_AMP_RATE * dt, min(FUNC_AMP_RATE * dt, tgt - f[k]))
-        point = (f["amp_p"] * math.cos(f["th"]), f["amp_r"] * math.sin(f["th"]))
+        want = self._func_shape()
+        if f["amp"] is None:
+            f["amp"] = want
+        # swing / posizione fissa cambiati dallo slider: ci si arriva a velocita' limitata
+        step = FUNC_AMP_RATE * dt
+        f["amp"] = tuple(a + max(-step, min(step, w - a)) for a, w in zip(f["amp"], want))
         if f["phase"] == "avvicinamento":
-            (f["p"], f["r"]), arrived = self._approach((f["p"], f["r"]), point, FUNC_APPROACH * dt)
+            (f["p"], f["r"]), arrived = self._approach((f["p"], f["r"]), self._func_point(f),
+                                                       FUNC_APPROACH * dt)
             if arrived:
                 f["phase"] = "in corsa"
                 self.log(f"[funzioni] {f['kind']}: partita")
@@ -616,7 +703,7 @@ class Bench:
             dw = abs(w_full) / FUNC_SPINUP_S * dt
             f["w"] += max(-dw, min(dw, w_full - f["w"]))
             f["th"] += f["w"] * dt
-            f["p"], f["r"] = f["amp_p"] * math.cos(f["th"]), f["amp_r"] * math.sin(f["th"])
+            f["p"], f["r"] = self._func_point(f)
         else:                                   # ritorno al centro
             (f["p"], f["r"]), arrived = self._approach((f["p"], f["r"]), (0.0, 0.0), FUNC_APPROACH * dt)
             if arrived:
@@ -625,7 +712,82 @@ class Bench:
                 return 0.0, 0.0
         return f["p"], f["r"]
 
+    # ------------------------------------------------------------ autocalibrazione
+    def _autocal_start(self, tel):
+        if not tel.get("cal"):
+            messagebox.showwarning("Autocalibrazione", "Pot non calibrati.")
+            return
+        raw = bool(self.ac_raw.get())
+        if not messagebox.askyesno(
+                "Autocalibrazione",
+                f"Il busto si muove da solo per circa {5 if raw else 4} minuti"
+                + (", anche in RAW (motori diretti, stop a 2 deg pitch / 5 deg roll)" if raw else "")
+                + ".\nBusto libero, niente mani in mezzo, fungo a portata. Procedere?"):
+            return
+        tune = {k: float(sc.get()) for k, sc in self.tune_sl.items()}
+        try:
+            self.autocal = autocal.Autocal(getattr(self, "mix", (1.0, 1.0, 1.0)), raw, tune,
+                                           self._fw_of_attached(), self.log)
+        except OSError as exc:
+            messagebox.showwarning("Autocalibrazione", f"Non riesco a creare il file: {exc}")
+            return
+        try:
+            self.link.extra_log = open(self.autocal.tel_path, "wb")
+        except OSError:
+            self.link.extra_log = None
+        self._tel_mark({"t": "func", "ev": "start", "kind": "autocal", "file": self.autocal.path})
+        self.func_btn.config(text="STOP", bg=ERR_COL)
+        self.log(f"[autocal] partita, risultati in {self.autocal.path}")
+
+    def _fw_of_attached(self):
+        with self.link.lock:
+            return (self.link.micros.get(self.mac) or {}).get("fw")
+
+    def _autocal_tick(self, tel, live):
+        """Un giro (20 Hz) dell'autocalibrazione: la sequenza decide cosa mandare."""
+        if self.estop:
+            self._autocal_end("fungo")
+            return
+        if not live:
+            self.ac_offline = getattr(self, "ac_offline", 0) + 1
+            if self.ac_offline > 20:           # 1 s senza telemetria
+                self._autocal_end("telemetria persa")
+            return
+        self.ac_offline = 0
+        try:
+            msg = self.autocal.step(tel)
+        except autocal.Abort as exc:
+            self._autocal_end(str(exc))
+            return
+        except StopIteration:
+            self._autocal_end(None)
+            return
+        if msg:
+            self.link.send(msg)
+
+    def _autocal_end(self, why):
+        ac, self.autocal = self.autocal, None
+        if ac is None:
+            return
+        if why:
+            # interrotta: motori a zero, disarmo e di nuovo in modo posizione (da disarmati si puo')
+            self.link.send({"t": "raw", "a": 0.0, "b": 0.0})
+            self.link.send({"t": "arm", "on": False})
+            self.link.send({"t": "mode", "m": "pos"})
+            self.log(f"[autocal] INTERROTTA ({why}): disarmato")
+        ac.finish(why)
+        extra, self.link.extra_log = self.link.extra_log, None
+        if extra:
+            extra.close()
+        self._tel_mark({"t": "func", "ev": "abort" if why else "end", "kind": "autocal"})
+        self.func_btn.config(text="AVVIA", bg=OK_COL)
+        self.func_sel.set("manual")
+        self._func_layout()
+
     def _func_show(self):
+        if self.autocal:
+            self.func_lbl.config(text=self.autocal.status())
+            return
         f = self.func
         if not f:
             self.func_lbl.config(text="comanda il joystick" if self.func_sel.get() == "manual"
@@ -943,6 +1105,9 @@ class Bench:
             self.log("[banco] FUNGO premuto: disarmo")
 
     def _send_command(self, tel):
+        if self.autocal:                       # comanda la sequenza (anche fra disarmo e riarmo)
+            self._autocal_tick(tel, bool(tel))
+            return
         if tel.get("st") != "armato" or self.estop:
             if self.func:
                 self._func_end("fungo" if self.estop else (tel.get("f") or tel.get("st") or "offline"))
