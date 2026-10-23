@@ -14,6 +14,10 @@ il profilo, lo comanda con gli stick e mostra cosa fa. Il micro non sa di essere
 - **Avvio:** icona **"AIRA Banco micro"** sul desktop (oppure `ros2 launch aira_bench bench.launch.py`).
 - **Collegamento:** micro sulla porta "solo micro" del RUT241, diretto o tramite lo switch del robot.
 - **Chiudi:** pulsante rosso **chiudi** in alto a destra. Disarma prima di uscire.
+- **Dal PC (schermo remoto VNC, 23/10):** sul desktop del portatile **VNC robot (cavo)** se il PC è
+  sullo switch del robot, **VNC robot (WiFi)** altrimenti (passa da un tunnel SSH cifrato). Vedi la
+  stessa plancia ingrandita x2, col mouse; gli stick del telecomando restano attivi. Dettagli in
+  `desktop/README.md`.
 - Il micro si aggancia **da solo** se in rete ce n'è uno solo che conosciamo; altrimenti si
   sceglie dalla scheda **micro**.
 
