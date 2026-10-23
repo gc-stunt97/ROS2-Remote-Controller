@@ -106,3 +106,18 @@ Al primo doppio-click, se GNOME non lo avvia, fare **tasto destro sull'icona ->
 - `Terminal=false` = appare solo la GUI. Per vedere i log, mettere `Terminal=true`.
 - Se un giorno servisse cambiare utente/percorso, aggiornare `Exec=` nel `.desktop`
   e `$HOME/ros2_ws` nello script.
+
+## Schermo remoto (VNC) — 23/10/2026
+
+Per usare la plancia dal PC con mouse e schermo grande, joystick del telecomando sempre attivi.
+
+```bash
+sudo apt install -y x11vnc
+x11vnc -storepasswd                 # password in ~/.vnc/passwd
+cp desktop/vnc-plancia.sh ~/ && chmod +x ~/vnc-plancia.sh
+mkdir -p ~/.config/autostart && cp desktop/AIRA-VNC.desktop ~/.config/autostart/
+~/vnc-plancia.sh &                  # oppure al prossimo login parte da solo
+```
+
+Dal PC (TigerVNC / RealVNC Viewer): `Controller` sulla WiFi, `192.168.10.10` col cavo sullo
+switch del robot. Togliere: `rm ~/.config/autostart/AIRA-VNC.desktop` e `pkill x11vnc`.

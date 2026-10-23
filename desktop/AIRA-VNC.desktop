@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Schermo remoto (VNC)
+Comment=Condivide lo schermo del telecomando: dal PC un visualizzatore VNC sulla porta 5900
+Exec=/home/giulio/vnc-plancia.sh
+Icon=preferences-desktop-remote-desktop
+Terminal=false
+Categories=Utility;
