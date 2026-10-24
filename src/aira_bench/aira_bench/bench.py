@@ -86,7 +86,10 @@ TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("pitch.ki", "pitch ki", 0.0
         ("comply", "cedevolezza 0=rigido", 0.0, 60.0, 1.0),     # fw >= 0.3.2: deg di cedimento per PWM di spinta
         ("gap.duty", "gioco duty 0=off", 0.0, 0.30, 0.005), ("gap.i_on", "gioco presa A", 0.05, 1.0, 0.01),
         ("gap.ms", "gioco max ms", 50.0, 600.0, 10.0),
-        ("hold_u", "soglia carico PWM", 0.0, 0.20, 0.005)]       # fw >= 0.3.2: sotto = a riposo (hold)
+        ("hold_u", "soglia carico PWM", 0.0, 0.20, 0.005),       # fw >= 0.3.2: sotto = a riposo (hold)
+        # fw >= 0.3.4: da dove si stima la spinta per la cedevolezza: 0 integrale, 1 uscita PID, 2 ACS
+        ("comply.src", "cedev. 0=int 1=PID 2=ACS", 0.0, 2.0, 1.0),
+        ("comply.amp", "ACS: A a PWM pieno", 1.0, 15.0, 0.1)]
 # scheda funzioni (23/10): movimenti automatici calcolati QUI e mandati come target a 20 Hz, cosi'
 # la velocita' vera la limitano comunque vel_max/acc/PWM del micro (scheda PID)
 FUNCS = (("manual", "Manuale (joystick)"), ("twirl", "Twirl"), ("osc_p", "Oscillatore pitch"),
