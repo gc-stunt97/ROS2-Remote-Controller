@@ -179,6 +179,8 @@ Duty = frazione di PWM (0,30 = 30% della tensione). Valori di partenza = quelli 
 | **gioco presa A** | Corrente che vuol dire "dente in presa": superata, il limite si toglie. | — |
 | **gioco max ms** | Tempo massimo col limite del gioco (sicurezza se l'ACS tace). | — |
 | **soglia carico PWM** | A bersaglio l'anello si spegne (zona morta) solo se la forza che sta facendo è sotto questa soglia: se qualcuno spinge resta acceso e tiene, senza "molla e riprende". | Bassa = a bersaglio può restare acceso a lungo; alta = tornano i colpetti con spinte leggere. 0 = vecchio comportamento. |
+| **fonte cedev. 0-2** (fw ≥ 0.3.4) | Da dove il micro stima quanto stai spingendo, per la cedevolezza: **0** = integrale del PID (come prima), **1** = tutta l'uscita del PID, **2** = corrente degli ACS. | Prove al banco: senti quale cede meglio. La spinta che si mangia l'attrito della vite non la vede nessuna delle tre. |
+| **ACS A a PWM max** (fw ≥ 0.3.4) | Solo con fonte 2: quanti ampere fa un motore fermo a PWM pieno, per mettere la corrente nella stessa scala delle altre fonti (busto 24/10: ~6). | Più basso = la corrente pesa di più = cede di più. |
 
 ### 6.4 Note
 - I tergicristalli sono **reversibili** con molto attrito: da spenti tengono la posa, ma a mano si muovono.

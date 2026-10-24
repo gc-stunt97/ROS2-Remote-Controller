@@ -75,9 +75,9 @@ SESSION_KEEP = 20
 # per queste chiavi). (chiave cfg, etichetta, min, max, passo); "vel" manda vel_max E vel_banco
 # None = casella vuota nella griglia (3 colonne, una riga per gruppo)
 TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("pitch.ki", "pitch ki", 0.0, 0.30, 0.002),
-        ("pitch.kd", "pitch kd", 0.0, 0.05, 0.0005),
+        ("pitch.kd", "pitch kd", 0.0, 0.01, 0.0005),
         ("roll.kp", "roll kp", 0.0, 0.50, 0.005), ("roll.ki", "roll ki", 0.0, 0.30, 0.002),
-        ("roll.kd", "roll kd", 0.0, 0.05, 0.0005),
+        ("roll.kd", "roll kd", 0.0, 0.01, 0.0005),   # 0-0.01: con 0-0.05 non si centrava un valore (24/10)
         ("pitch.u_max", "PWM max pitch", 0.05, 1.0, 0.01), ("roll.u_max", "PWM max roll", 0.05, 1.0, 0.01),
         ("duty_max", "PWM max motori", 0.10, 1.0, 0.01),
         ("vel", "vel max deg/s", 2.0, 120.0, 1.0), ("acc_max", "acc deg/s2", 10.0, 600.0, 10.0),
@@ -88,8 +88,8 @@ TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("pitch.ki", "pitch ki", 0.0
         ("gap.ms", "gioco max ms", 50.0, 600.0, 10.0),
         ("hold_u", "soglia carico PWM", 0.0, 0.20, 0.005),       # fw >= 0.3.2: sotto = a riposo (hold)
         # fw >= 0.3.4: da dove si stima la spinta per la cedevolezza: 0 integrale, 1 uscita PID, 2 ACS
-        ("comply.src", "cedev. 0=int 1=PID 2=ACS", 0.0, 2.0, 1.0),
-        ("comply.amp", "ACS: A a PWM pieno", 1.0, 15.0, 0.1)]
+        ("comply.src", "fonte cedev. 0-2", 0.0, 2.0, 1.0),   # etichette corte: 3 colonne in 800 px
+        ("comply.amp", "ACS A a PWM max", 1.0, 15.0, 0.1)]
 # scheda funzioni (23/10): movimenti automatici calcolati QUI e mandati come target a 20 Hz, cosi'
 # la velocita' vera la limitano comunque vel_max/acc/PWM del micro (scheda PID)
 FUNCS = (("manual", "Manuale (joystick)"), ("twirl", "Twirl"), ("osc_p", "Oscillatore pitch"),
