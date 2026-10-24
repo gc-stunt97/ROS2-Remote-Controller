@@ -194,6 +194,7 @@ class Link:
         self.target_ip = None     # micro agganciato
         self.tel = {}
         self.tel_time = 0.0
+        self.imu = {}             # ultimo {"t":"imu"} del micro agganciato
         self.hb_enabled = True
         self.on_hello = None      # callback(mac, hello) chiamata dal thread di rete
         self.on_ack = None
@@ -250,7 +251,10 @@ class Link:
                 msg["ip_src"] = ip
                 msg["seen"] = time.time()
                 with self.lock:
+                    old = self.micros.get(mac, {}).get("imu")
                     self.micros[mac] = msg
+                if ip == self.target_ip and msg.get("imu") != old:
+                    self.log(f"[micro] IMU: {msg.get('imu')}")
                 if self.on_hello:
                     self.on_hello(mac, msg)
             elif ip != self.target_ip:
@@ -268,6 +272,13 @@ class Link:
                         extra.write(data.rstrip(b"\0\r\n") + b"\n")
                     except (ValueError, OSError):   # chiuso dall'altro thread a fine prova
                         pass
+            elif t == "imu":
+                # 100 Hz anche da disarmato (25/10): la IMU si prova a busto fermo. Nel registro
+                # della sessione insieme alla telemetria, stesso tetto
+                with self.lock:
+                    self.imu = msg
+                if self.tel_log and self.tel_log.tell() < TEL_LOG_MAX:
+                    self.tel_log.write(data.rstrip(b"\0\r\n") + b"\n")
             elif t == "log":
                 self.log(f"[micro] {msg.get('m', '')}")
             elif t == "ack":
@@ -948,7 +959,7 @@ class Bench:
     def _refresh_micros(self):
         ms = self._micros()
         sig = tuple((m, r, h.get("ip_src"), h.get("fw"), h.get("part"), h.get("img"),
-                     h.get("boss"), h["gone"]) for m, h, r in ms) + (self.mac,)
+                     h.get("boss"), h.get("imu"), h["gone"]) for m, h, r in ms) + (self.mac,)
         if sig == self.micro_sig:
             return
         self.micro_sig = sig
@@ -968,7 +979,7 @@ class Bench:
             row.pack(fill=tk.X)
             line1 = f"{(r or 'SCONOSCIUTO'):12} {m}" + ("  (assente)" if h["gone"] else "")
             line2 = (f"  {h.get('ip_src', '?'):15} fw {h.get('fw', '?')} {h.get('part', '?')}"
-                     f"  capo: {boss}")
+                     f"  capo: {boss}" + (f"  imu: {h['imu']}" if h.get("imu") else ""))
             tk.Label(row, text=line1 + "\n" + line2, bg=bg, fg=fg, font=("TkFixedFont", 9),
                      anchor="w", justify="left").pack(side=tk.LEFT, fill=tk.X, expand=True)
             if mine:
