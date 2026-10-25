@@ -31,8 +31,10 @@ import http.server
 import json
 import math
 import os
+import re
 import socket
 import socketserver
+import subprocess
 import threading
 import time
 import tkinter as tk
@@ -92,8 +94,9 @@ TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("pitch.ki", "pitch ki", 0.0
         ("comply.amp", "ACS A a PWM max", 1.0, 15.0, 0.1)]
 # scheda funzioni (23/10): movimenti automatici calcolati QUI e mandati come target a 20 Hz, cosi'
 # la velocita' vera la limitano comunque vel_max/acc/PWM del micro (scheda PID)
-FUNCS = (("manual", "Manuale (joystick)"), ("twirl", "Twirl"), ("osc_p", "Oscillatore pitch"),
-         ("osc_r", "Oscillatore roll"), ("autocal", "Autocalibrazione"))
+FUNCS = (("manual", "Manuale (joystick)"), ("sliders", "Slider (a mano)"), ("twirl", "Twirl"),
+         ("osc_p", "Oscillatore pitch"), ("osc_r", "Oscillatore roll"),
+         ("autocal", "Autocalibrazione"))
 # slider visibili per funzione: un oscillatore ha il SUO swing e l'altro asse FERMO in un punto
 FUNC_SLIDERS = {"twirl": ("period", "sw_p", "sw_r"), "osc_p": ("period", "sw_p", "pos_r"),
                 "osc_r": ("period", "sw_r", "pos_p")}
@@ -168,6 +171,53 @@ class Profiles:
         c.update(self.local(role))
         return c
 
+    def save_profile(self, role, values):
+        """Scrive i valori nel profilo DEL REPO (periph/<ruolo>.yaml, sezione cfg) e lo committa
+        nel clone (25/10, Giulio: salvare dalla plancia senza passare da Claude). Riga per riga,
+        cosi' restano i commenti; una chiave che non c'e' si aggiunge in fondo alla sezione cfg.
+        Torna (cambiate, esito del commit). Da portatile: git pull dal telecomando, poi push."""
+        path = os.path.join(self.dir, f"{role}.yaml")
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().split("\n")
+        cur = (load_yaml(path).get("cfg") or {})
+        changed, missing = [], []
+        for key, v in values.items():
+            if key in cur and float(cur[key]) == float(v):
+                continue
+            pat = re.compile(r"^(  " + re.escape(key) + r":\s*)(\S+)(.*)$")
+            for i, ln in enumerate(lines):
+                m = pat.match(ln)
+                if m:
+                    lines[i] = f"{m.group(1)}{v:g}{m.group(3)}"
+                    changed.append(key)
+                    break
+            else:
+                missing.append(key)
+        if missing:
+            # in fondo alla sezione cfg: prima riga dopo "cfg:" che non e' indentata (anche un
+            # commento a colonna 0: e' l'intestazione della sezione dopo)
+            start = lines.index("cfg:")
+            end = next((i for i in range(start + 1, len(lines))
+                        if lines[i] and not lines[i].startswith(" ")), len(lines))
+            while end > start + 1 and not lines[end - 1].strip():
+                end -= 1
+            lines[end:end] = [f"  {k}: {values[k]:g}" for k in missing]
+            changed += missing
+        if not changed:
+            return [], "niente da salvare: il profilo ha gia' questi valori"
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(lines))
+        msg = (f"profilo {role}: valori salvati dalla plancia ({time.strftime('%d/%m %H:%M')})\n\n"
+               + "\n".join(f"{k}: {values[k]:g}" for k in changed))
+        try:
+            r = subprocess.run(["git", "-C", self.repo, "commit", "-q", "-m", msg, "--",
+                                os.path.join("periph", f"{role}.yaml")],
+                               capture_output=True, text=True, timeout=10)
+            git = "commit nel clone" if r.returncode == 0 else f"commit NON riuscito: {r.stderr.strip()[:80]}"
+        except (OSError, subprocess.SubprocessError) as exc:
+            git = f"commit NON riuscito: {exc}"
+        return changed, git
+
     def save_local(self, role, values):
         os.makedirs(self.local_dir, exist_ok=True)
         cur = self.local(role)
@@ -195,6 +245,11 @@ class Link:
         self.tel = {}
         self.tel_time = 0.0
         self.imu = {}             # ultimo {"t":"imu"} del micro agganciato
+        self.imu_time = 0.0
+        # assetto del SENSORE stimato qui (filtro complementare): roll/pitch dalla gravita' +
+        # giroscopio, yaw solo integrato (deriva: si azzera toccando il disegno). Solo per vedere
+        self.att = [0.0, 0.0, 0.0]
+        self._att_ms = None
         self.hb_enabled = True
         self.on_hello = None      # callback(mac, hello) chiamata dal thread di rete
         self.on_ack = None
@@ -226,6 +281,44 @@ class Link:
                 self.sock.sendto(json.dumps(obj).encode(), (ip, CMD_PORT))
             except OSError as exc:
                 self.log(f"[banco] invio fallito: {exc}")
+
+    def _tel_write(self, data, flush=True):
+        """Riga nel registro della sessione. Oltre TEL_LOG_MAX si passa a un file nuovo
+        (tel_<sessione>_2, _3...) invece di smettere: il 24/10 il registro si era fermato a meta'
+        sessione e le prove della sera non c'erano"""
+        if not self.tel_log:
+            return
+        if self.tel_log.tell() >= TEL_LOG_MAX:
+            self._tel_part = getattr(self, "_tel_part", 1) + 1
+            try:
+                self.tel_log.close()
+                self.tel_log = open(os.path.join(TEL_DIR, f"tel_{SESSION}_{self._tel_part}.jsonl"), "wb")
+                self.log(f"[banco] registro pieno: continuo in {os.path.basename(self.tel_log.name)}")
+            except OSError:
+                self.tel_log = None
+                return
+        self.tel_log.write(data.rstrip(b"\0\r\n") + b"\n")
+        if flush:
+            self.tel_log.flush()
+
+    def _attitude(self, m):
+        a, g, ms = m.get("a") or [0, 0, 0], m.get("g") or [0, 0, 0], m.get("ms", 0)
+        dt = 0.0 if self._att_ms is None else (ms - self._att_ms) / 1000.0
+        self._att_ms = ms
+        if not 0.0 < dt < 0.2:
+            dt = 0.0
+        r, p, y = self.att
+        r += g[0] * dt
+        p += g[1] * dt
+        y += g[2] * dt
+        n = math.sqrt(a[0] ** 2 + a[1] ** 2 + a[2] ** 2)
+        if 7.0 < n < 12.5:       # gravita' credibile: corregge la deriva di roll e pitch
+            ra = math.atan2(a[1], a[2])
+            pa = math.atan2(-a[0], math.hypot(a[1], a[2]))
+            k = 0.02 if dt else 1.0
+            r += k * math.remainder(ra - r, 2 * math.pi)
+            p += k * (pa - p)
+        self.att = [r, p, y]
 
     def _hb(self):
         while not self._stop.is_set():
@@ -263,9 +356,8 @@ class Link:
                 with self.lock:
                     self.tel = msg
                     self.tel_time = time.time()
-                if self.tel_log and msg.get("st") == "armato" and self.tel_log.tell() < TEL_LOG_MAX:
-                    self.tel_log.write(data.rstrip(b"\0\r\n") + b"\n")
-                    self.tel_log.flush()
+                if msg.get("st") == "armato":
+                    self._tel_write(data)
                 extra = self.extra_log
                 if extra:
                     try:
@@ -277,8 +369,9 @@ class Link:
                 # della sessione insieme alla telemetria, stesso tetto
                 with self.lock:
                     self.imu = msg
-                if self.tel_log and self.tel_log.tell() < TEL_LOG_MAX:
-                    self.tel_log.write(data.rstrip(b"\0\r\n") + b"\n")
+                    self.imu_time = time.time()
+                    self._attitude(msg)
+                self._tel_write(data, flush=False)
             elif t == "log":
                 self.log(f"[micro] {msg.get('m', '')}")
             elif t == "ack":
@@ -453,6 +546,17 @@ class Bench:
                                   anchor="w", justify="left")
         self.motor_lbl.pack(fill=tk.X)
 
+        # IMU (25/10): numeri + disegno degli assi del sensore. Toccare il disegno azzera lo yaw
+        r = tk.Frame(left, bg=BG)
+        r.pack(fill=tk.X, pady=(4, 0))
+        self.imu_cv = tk.Canvas(r, width=104, height=104, bg=INK, highlightthickness=1,
+                                highlightbackground=GRID)
+        self.imu_cv.pack(side=tk.LEFT)
+        self.imu_cv.bind("<Button-1>", self._imu_zero_yaw)
+        self.imu_lbl = tk.Label(r, text="IMU: nessun dato", bg=BG, fg=FG, font=("TkFixedFont", 8),
+                                anchor="nw", justify="left")
+        self.imu_lbl.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0))
+
         # destra: calibrazione + OTA + log
         st = ttk.Style(self.root)
         st.theme_use("default")
@@ -467,10 +571,11 @@ class Bench:
         self.tabs.add(tab_log, text="log")
         self.tabs.add(self.tab_micro, text="micro")
         self.tabs.add(tab_cal, text="cal / OTA")
-        tab_sl = tk.Frame(self.tabs, bg=BG)
-        self.tabs.add(tab_sl, text="slider")
+        self._build_funcs()
+        # slider (senza ROS o senza joystick): dentro la scheda funzioni come "Slider" (25/10,
+        # Giulio: una scheda in meno). Si costruiscono qui e _func_layout li mostra o li nasconde
+        tab_sl = self.func_sl_frame
 
-        # slider (senza ROS o senza joystick)
         tk.Label(tab_sl, text="comandano se il joystick tace da 1 s, o sempre con la casella",
                  bg=BG, fg=GRID, font=("TkFixedFont", 8)).pack(anchor="w", pady=(4, 0))
         # con la casella gli stick sono esclusi: duty/angolo FISSO a mani libere (tester, ACS712,
@@ -499,8 +604,7 @@ class Bench:
             self.sl[name] = sc
         self._btn(tab_sl, "slider a zero",
                   lambda: [sc.set(0) for sc in self.sl.values()]).pack(pady=4)
-
-        self._build_funcs()
+        self._func_layout()
 
         # scheda PID: si manda al RILASCIO dello slider (set() da programma non manda nulla)
         tab_pid = tk.Frame(self.tabs, bg=BG)
@@ -520,6 +624,7 @@ class Bench:
         row.pack(fill=tk.X, pady=2)
         self._btn(row, "valori del profilo", self._tune_reset).pack(side=tk.LEFT)
         self._btn(row, "scrivi valori nel log", self._tune_dump).pack(side=tk.LEFT, padx=4)
+        self._btn(row, "SALVA nel profilo", self._tune_save).pack(side=tk.LEFT)
 
         # una riga per ogni scheda che si annuncia (si ricostruisce solo quando cambia qualcosa)
         self.micro_frame = tk.Frame(self.tab_micro, bg=BG)
@@ -598,9 +703,9 @@ class Bench:
         self.func_note = tk.Label(tab, text="", bg=BG, fg=GRID, font=("TkFixedFont", 8),
                                   anchor="w", justify="left")
         self.func_note.pack(fill=tk.X, pady=(4, 0))
+        self.func_sl_frame = tk.Frame(tab, bg=BG)      # "Slider": lo riempie _build
         self.func = None           # funzione in corso (dict con fase e stato); None = manuale
         self.autocal = None        # autocalibrazione in corso (autocal.Autocal)
-        self._func_layout()
 
     def _func_layout(self):
         kind = self.func_sel.get()
@@ -620,6 +725,10 @@ class Bench:
             else:
                 cb.pack_forget()
         self.func_note.config(text=FUNC_NOTES.get(kind, ""))
+        if kind == "sliders":
+            self.func_sl_frame.pack(fill=tk.X)
+        else:
+            self.func_sl_frame.pack_forget()
 
     # ------------------------------------------------------------ funzioni automatiche
     def _running_kind(self):
@@ -629,7 +738,7 @@ class Bench:
         running = self._running_kind()
         kind = self.func_sel.get()
         if running and kind != running:
-            if kind == "manual" and self.func:
+            if kind in ("manual", "sliders") and self.func:
                 self._func_stop("scelto Manuale")
             else:
                 self.func_sel.set(running)      # un'altra funzione: prima si ferma questa
@@ -644,8 +753,9 @@ class Bench:
             self._func_stop("stop")
             return
         kind = self.func_sel.get()
-        if kind == "manual":
-            self.log("[funzioni] scegli una funzione (Manuale = joystick, gia' attivo)")
+        if kind in ("manual", "sliders"):
+            self.log("[funzioni] Manuale e Slider non si avviano: comandano gia' "
+                     "(gli slider se il joystick tace da 1 s, o sempre con la casella)")
             return
         tel, age = self._tel()
         if age > 0.5 or tel.get("st") != "armato" or tel.get("mode") != "pos":
@@ -833,7 +943,9 @@ class Bench:
             return
         f = self.func
         if not f:
-            self.func_lbl.config(text="comanda il joystick" if self.func_sel.get() == "manual"
+            kind = self.func_sel.get()
+            self.func_lbl.config(text="comanda il joystick" if kind == "manual" else
+                                 "comandano gli slider qui sotto se il joystick tace" if kind == "sliders"
                                  else "pronta: AVVIA (micro armato, modo posizione)")
             return
         self.func_lbl.config(text=f"{f['kind']}: {f['phase']}   target p {f['p']:+6.1f}  r {f['r']:+6.1f}")
@@ -1103,6 +1215,31 @@ class Bench:
         self.log("[PID] da copiare in periph/torso.yaml: " +
                  ", ".join(f"{('vel_max' if k == 'vel' else k)}: {v:g}" for k, v in vals.items()))
 
+    def _tune_save(self):
+        """Valori della scheda PID -> profilo del repo (+ commit). Da li' "rimanda cfg", un riavvio
+        del micro o una riapertura della plancia ripartono da questi."""
+        if not self.role:
+            return
+        vals = {("vel_max" if k == "vel" else k): round(float(sc.get()), 6)
+                for k, sc in self.tune_sl.items()}
+        if not messagebox.askyesno("Salva", f"Scrivo i {len(vals)} valori della scheda PID nel\n"
+                                   f"profilo '{self.role}' (periph/{self.role}.yaml)?"):
+            return
+        try:
+            changed, git = self.prof.save_profile(self.role, vals)
+        except (OSError, ValueError, RuntimeError) as exc:
+            messagebox.showerror("Salva", f"Non riesco a scrivere il profilo:\n{exc}")
+            return
+        if changed:
+            self.log(f"[PID] SALVATI nel profilo ({git}): " +
+                     ", ".join(f"{k}: {vals[k]:g}" for k in changed))
+            shadow = sorted(set(self.prof.local(self.role)) & set(vals))
+            if shadow:      # la calibrazione locale vince sul profilo: avvisare
+                self.log(f"[PID] ⚠ in ~/.aira/periph/{self.role}.yaml ci sono anche "
+                         f"{', '.join(shadow)}: valgono quelli, non il profilo")
+        else:
+            self.log(f"[PID] {git}")
+
     def _toggle_no_lim(self):
         prof = self.prof.cfg(self.role).get("raw_ignore_pot", 0) if self.role else 0
         if not self.no_lim.get():              # rimettere i limiti e' sempre sicuro
@@ -1275,6 +1412,54 @@ class Bench:
             else:
                 c.create_line(x, y0, x, y1, fill=col, width=3)
 
+    def _imu_zero_yaw(self, _ev=None):
+        with self.link.lock:
+            self.link.att[2] = 0.0
+
+    def _imu_show(self):
+        with self.link.lock:
+            m, age, (r, p, y) = dict(self.link.imu), time.time() - self.link.imu_time, self.link.att
+        h = getattr(self, "last_hello", {}) or {}
+        state = h.get("imu", "?") + (f" ({h['imu_why']})" if h.get("imu_why") else "")
+        c = self.imu_cv
+        c.delete("all")
+        if not m or age > 0.5:
+            self.imu_lbl.config(text=f"IMU: {state}\nnessun dato" + (f" da {age:.0f} s" if m else ""))
+            return
+        a, g = m.get("a", [0, 0, 0]), m.get("g", [0, 0, 0])
+        n = math.sqrt(sum(v * v for v in a))
+        self.imu_lbl.config(text=(
+            f"IMU: {state}\n"
+            f"acc {a[0]:+6.2f} {a[1]:+6.2f} {a[2]:+6.2f}\n"
+            f"|a| {n:5.2f} m/s2\n"
+            f"gyr {g[0]:+6.3f} {g[1]:+6.3f} {g[2]:+6.3f}\n"
+            f"roll {math.degrees(r):+6.1f}  pitch {math.degrees(p):+6.1f}\n"
+            f"yaw {math.degrees(y):+6.1f} (deriva: tocca il disegno)"))
+        # assi del sensore ruotati (yaw-pitch-roll), visti da davanti-destra-alto
+        cr, sr, cp, sp, cy, sy = math.cos(r), math.sin(r), math.cos(p), math.sin(p), math.cos(y), math.sin(y)
+        R = [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+             [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+             [-sp, cp * sr, cp * cr]]
+        az, el = math.radians(-35), math.radians(25)
+
+        def proj(v):
+            x = v[0] * math.cos(az) - v[1] * math.sin(az)
+            yy = v[0] * math.sin(az) + v[1] * math.cos(az)
+            return 52 - 38 * yy, 52 - 38 * (v[2] * math.cos(el) - x * math.sin(el))
+
+        def body(v):
+            return [sum(R[i][j] * v[j] for j in range(3)) for i in range(3)]
+
+        # piano della schedina + gli assi X (rosso), Y (verde), Z (blu)
+        corners = [proj(body(v)) for v in ((0.6, 0.4, 0), (0.6, -0.4, 0), (-0.6, -0.4, 0), (-0.6, 0.4, 0))]
+        c.create_polygon(*[k for pt in corners for k in pt], fill=GRID, outline=OFF_COL)
+        for v, col, txt in (((1, 0, 0), ERR_COL, "X"), ((0, 1, 0), OK_COL, "Y"), ((0, 0, 1), TGT_COL, "Z")):
+            x0, y0 = proj((0, 0, 0))
+            x1, y1 = proj(body(v))
+            c.create_line(x0, y0, x1, y1, fill=col, width=3, arrow=tk.LAST)
+            c.create_text(x1 + (x1 - x0) * 0.15, y1 + (y1 - y0) * 0.15, text=txt, fill=col,
+                          font=("TkDefaultFont", 8, "bold"))
+
     def _tick(self):
         if self.node is not None:
             # spin_once esegue UNA callback: a giro se ne svuotano fino a JOY_DRAIN, perche' gli
@@ -1288,6 +1473,16 @@ class Bench:
             if self.mac is None:
                 self._auto_attach()
         tel, age = self._tel()
+        # riavvio del micro = il suo orologio (ms) torna indietro. Prima lo si capiva solo dal
+        # hello senza capo, che dopo un OTA spesso non si vede (l'heartbeat lo riaggancia prima):
+        # la cfg non partiva e l'arm era rifiutato "pot NON calibrati" (25/10)
+        ms = tel.get("ms") if age < 1.0 else None
+        last = getattr(self, "_tel_ms", None)
+        if ms is not None and last is not None and ms + 1000 < last:
+            self.log("[banco] il micro si e' riavviato: rimando la config")
+            self.cfg_sent = False
+        if ms is not None:
+            self._tel_ms = ms
         if self.role and self.link.target_ip and not self.cfg_sent and age < 1.0:
             self._push_cfg()
         live = age < 0.5
@@ -1323,6 +1518,7 @@ class Bench:
                      + ("   ⚠ FUNGO" if self.estop else ""))
         self._send_command(tel if live else {})
         self._func_show()
+        self._imu_show()
         self.root.after(50, self._tick)    # 20 Hz di comandi, come l'heartbeat
 
     def _on_close(self):

@@ -34,12 +34,13 @@ il profilo, lo comanda con gli stick e mostra cosa fa. Il micro non sa di essere
 | **posizione / RAW motori** | Modo. Si cambia **solo da disarmato**: il pallino segue sempre il modo vero del micro. |
 | **clear** | Toglie il fault. Poi va **riarmato** a mano. |
 | **stacca HB** | Simula il cavo che cade: il micro deve disarmarsi da solo (~300 ms). Diventa **RIATTACCA HB** rosso. |
-| **rimanda cfg** | Rimanda tutto il profilo al micro. **Da premere dopo un OTA o un riavvio del micro.** Rimette anche gli slider PID ai valori del profilo. |
+| **rimanda cfg** | Rimanda tutto il profilo al micro e rimette gli slider PID ai valori del profilo. **La plancia lo fa già da sola** all'aggancio e a ogni riavvio del micro (OTA compreso, se ne accorge dal suo orologio che riparte): a mano serve solo per tornare ai valori salvati. |
 | **leggi cfg** | Chiede al micro la config che sta usando (finisce nel log). |
 | **Barre dei giunti** | Verde = posizione **misurata**, blu = **target** chiesto, giallo = **setpoint** (la rampa che insegue il target). |
 | Testo sotto le barre | `mis` / `target` / `set` in gradi, `vel` (°/s), `u` = spinta dell'anello per quel giunto (duty, prima del mixing), `raw` = lettura grezza del pot. |
 | **Barre mot A / mot B** | Duty vero dato a ciascun motore (−1…+1). |
 | Testo sotto i motori | Duty, **corrente** (A) e mV grezzi dell'ACS per motore, `saturo` = 1 se il duty è stato tagliato al massimo, **heartbeat visto dal micro** (ms), `⚠ FUNGO` se premuto. |
+| **IMU** (in fondo) | Stato (`ok` / `init` / `assente` / `perso`, col motivo dal fw 0.3.5), accelerazione (m/s²) e `|a|` (da fermo ~9,8), giroscopio (rad/s), roll/pitch/yaw stimati dalla plancia. Il disegno mostra gli **assi del sensore** (X rosso, Y verde, Z blu) rispetto alla gravità. Lo **yaw** viene solo dal giroscopio e deriva: **tocca il disegno** per azzerarlo. È una vista per controllo, non quella che userà il robot. |
 
 > La corrente dell'ACS è quella **nel motore**, non quella dell'alimentatore: col PWM l'alimentatore
 > legge circa *duty × corrente del motore*, quindi meno. Guadagno tarato sulla carta, mai
@@ -50,8 +51,8 @@ il profilo, lo comanda con gli stick e mostra cosa fa. Il micro non sa di essere
 - **micro (N)** — tutte le schede che si annunciano. Rosso = ha già un altro capo (il mini PC);
   grigio = assente. **aggancia** per sceglierne una; *AGGANCIATO* = quella in uso.
 - **cal / OTA** — calibrazione dei pot e aggiornamento firmware (vedi §4).
-- **slider** — comando a mano senza stick (vedi §3).
-- **funzioni** — movimenti automatici (Twirl, oscillatori) al posto del joystick (vedi §3).
+- **funzioni** — comando a mano con gli **Slider** e movimenti automatici (Twirl, oscillatori,
+  autocalibrazione) al posto del joystick (vedi §3).
 - **PID** — taratura dal vivo (vedi la sezione della parte, es. §6.3 per il busto).
 
 Ogni slider ha il **nome a sinistra e il valore a destra**, sopra la barra: col dito sulla barra
@@ -60,11 +61,12 @@ il numero resta leggibile.
 ## 3. Come si comanda
 
 - **Stick:** comandano sempre, se pubblicano. La mappatura dipende dalla parte (vedi la sua sezione).
-- **Slider (scheda slider):** comandano se il joystick tace da 1 s, oppure **sempre** con la
+- **Slider (scheda funzioni → Slider):** comandano se il joystick tace da 1 s, oppure **sempre** con la
   casella *comanda con gli slider (stick esclusi)*. Utile per un valore **fisso e ripetibile**
   (prove registrate, tester, misure di corrente). All'arm e al cambio di sorgente gli slider
   tornano a zero. **slider a zero** li azzera a mano.
-- **Funzioni (scheda funzioni):** scegli **Manuale (joystick)**, **Twirl**, **Oscillatore pitch** o
+- **Funzioni (scheda funzioni):** scegli **Manuale (joystick)**, **Slider** (non si avvia: mostra
+  gli slider e le caselle del RAW), **Twirl**, **Oscillatore pitch** o
   **Oscillatore roll**, poi **AVVIA** (serve il micro armato in modo posizione). Mentre una funzione
   gira stick e slider sono **ignorati**.
   - Avvio: il target parte dalla posa misurata, va **piano** (10°/s) al punto di partenza, poi la
@@ -103,7 +105,7 @@ il numero resta leggibile.
 2. *cal / OTA* → **OTA: scegli .bin** → il micro scarica, si riavvia, si conferma al primo heartbeat
    (se il firmware nuovo non parla entro ~90 s torna da solo al vecchio).
 3. Controlla la versione nella riga in alto o nella scheda *micro*.
-4. **rimanda cfg** (oggi la plancia non lo fa da sola dopo un OTA).
+4. La config la rimanda **da sola** (nel log: *il micro si e' riavviato: rimando la config*).
 - **riavvia micro**: riavvio semplice (es. per rifare lo zero degli ACS, che si prende all'avvio a motori fermi).
 
 **Calibrare i pot** (due pose, angolo letto con livella o telefono)
@@ -115,8 +117,11 @@ il numero resta leggibile.
 **Tarare dal vivo (scheda PID)**
 1. Arma, muovi lo slider: il valore parte **al rilascio** del dito (cambiarli da armato non disarma).
 2. Il **micro** li dimentica a **rimanda cfg**, al riaggancio o al riavvio: lì tornano quelli del
-   profilo. Quando sei contento premi **scrivi valori nel log**: la riga resta anche nel file della
-   sessione (`~/.aira/bench_log/`), e mi dici di ricopiarli nel profilo.
+   profilo. Quando sei contento premi **SALVA nel profilo**: scrive tutti i valori della scheda nel
+   profilo del repo sul telecomando (`~/AIRA_Robot/periph/<parte>.yaml`, i commenti restano) e fa
+   il commit lì. Da quel momento riavvii e riaperture ripartono da questi. Il telecomando non ha
+   internet: su GitHub ci vanno quando li porto io dal portatile (`git pull` dal telecomando).
+   **scrivi valori nel log** resta per annotare una prova senza salvarla.
 3. **valori del profilo**: torna ai valori del repo (e li rimanda al micro).
 
 **Registrare una prova**
@@ -124,7 +129,8 @@ il numero resta leggibile.
   tengono le ultime 20.
   - **Telemetria** da armato a 50 Hz, con una riga per ogni slider PID mosso e per ogni avvio o stop
     di funzione: `~/.aira/bench_tel/tel_<data>.jsonl`. `~/.aira/bench_tel.jsonl` punta sempre
-    all'ultima sessione.
+    all'ultima sessione. Dati **IMU** (100 Hz, anche da disarmato) nello stesso file. Oltre 50 MB
+    continua in `tel_<data>_2.jsonl`, `_3`... (prima si fermava).
   - **Scheda log**, compreso «scrivi valori nel log»: `~/.aira/bench_log/log_<data>.txt`.
   - Prova tipo: 10 s fermo, poi i gradini, poi la spinta a mano (o l'autocalibrazione, che fa
     tutto da sola).
@@ -134,7 +140,7 @@ il numero resta leggibile.
 | Sintomo | Cosa fare |
 |---|---|
 | Joystick "morto" dopo aver riaperto la plancia | Seriale contesa col modo mouse: **chiudi, aspetta 3 s, riapri**. |
-| Dopo OTA/riavvio il micro si comporta "di default" | **rimanda cfg**. |
+| Dopo OTA/riavvio il micro si comporta "di default" | Dovrebbe rimandarla da sola: se no **rimanda cfg**. |
 | Il modo non cambia | Si cambia solo da disarmato (il log lo dice). |
 | `OFFLINE` | Micro spento, cavo, o rete: guarda la scheda *micro*. |
 | Finestra "Ubuntu has experienced an internal error" all'avvio | Rapporti di crash vecchi, innocui: si cancellano i file in `/var/crash/`. |
