@@ -679,7 +679,8 @@ class Bench:
         lr = tk.Frame(lev, bg=BG)
         lr.pack(fill=tk.X, pady=2)
         self._btn(lr, "azzera livello (base in piano)", self._level_zero).pack(side=tk.LEFT)
-        self.level_lbl = tk.Label(lr, text="", bg=BG, fg=SP_COL, font=("TkFixedFont", 8))
+        self.level_lbl = tk.Label(lr, text="", bg=BG, fg=SP_COL, font=("TkFixedFont", 8),
+                                  justify="left", anchor="w")
         self.level_lbl.pack(side=tk.LEFT, padx=6)
 
         ota = tk.Frame(tab_cal, bg=BG)
@@ -1494,8 +1495,9 @@ class Bench:
         tel_bp = tel.get("bp") if tage < 0.5 else None
         tel_br, tel_lp, tel_lr = tel.get("br", 0), tel.get("lvp", 0), tel.get("lvr", 0)
         if tel_bp is not None:
-            self.level_lbl.config(text=f"base: pitch {tel_bp:+.1f} roll {tel_br:+.1f}  "
-                                       f"correzione {tel_lp:+.1f} {tel_lr:+.1f}")
+            # su due righe: in una sola usciva dallo schermo a destra (800 px, banco 25/10)
+            self.level_lbl.config(text=f"base   p {tel_bp:+5.1f}  r {tel_br:+5.1f}\n"
+                                       f"corr.  p {tel_lp:+5.1f}  r {tel_lr:+5.1f}")
         self.imu_lbl.config(text=(
             f"IMU: {state}\n"
             f"acc {a[0]:+6.2f} {a[1]:+6.2f} {a[2]:+6.2f}\n"
