@@ -967,6 +967,15 @@ mouse, lo riavvia alla chiusura).
   «start» del modo mouse della vecchia passa prima che la nuova apra la porta, stick a ~1
   messaggio/s, «busto in ritardo». `mouse-mode.sh` ora non parte se c'è un launch di plancia vivo;
   diagnosi: `pgrep -af joypad_node` (due righe = guaio);
+- (25/10 pomeriggio) **«azzera livello» non aveva MAI funzionato**: `NL` non definita → NameError
+  ingoiato da Tk, niente popup né zero (`28eb304`). Twirl e oscillatori con **tetto di 45 °/s** al
+  target di picco: oltre, il periodo si allunga da solo e lo scrive nel log (`05677b8`). Il motivo
+  lungo dell'IMU (fw ≥ 0.3.12) va a capo, e l'etichetta del livellamento sta su due righe: prima
+  uscivano dallo schermo (`18174ce`, `c6ea5ba`). Controllo: `python -m pyflakes` su `bench.py`
+  prima del deploy (avrebbe trovato `NL`).
+- ⚠️ **busto col ponte del mini PC** (`aira_periph`, AIRA_HANDBOOK §14.15): plancia e ponte mai
+  insieme. Chiusa la plancia il micro resta senza capo in ~2 s e il ponte lo prende; finito, il
+  ponte va spento (`kill -TERM`) prima di riaprire la plancia.
 - ⭐ **registro della telemetria** (20/10): da armato ogni riga `tel` (50 Hz) va in
   `~/.aira/bench_tel.jsonl` (dal 23/10: un file per sessione in `~/.aira/bench_tel/`, ultime 20, e la scheda log in `~/.aira/bench_log/`; il vecchio nome è un link all'ultima), oltre 50 MB continua in `tel_<data>_2.jsonl`… (25/10; prima si fermava) → si tara l'anello sui dati
   (scp e grafico), non a occhio;
