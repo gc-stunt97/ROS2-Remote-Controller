@@ -959,7 +959,7 @@ class Bench:
     def _refresh_micros(self):
         ms = self._micros()
         sig = tuple((m, r, h.get("ip_src"), h.get("fw"), h.get("part"), h.get("img"),
-                     h.get("boss"), h.get("imu"), h["gone"]) for m, h, r in ms) + (self.mac,)
+                     h.get("boss"), h.get("imu"), h.get("imu_why"), h["gone"]) for m, h, r in ms) + (self.mac,)
         if sig == self.micro_sig:
             return
         self.micro_sig = sig
@@ -979,7 +979,8 @@ class Bench:
             row.pack(fill=tk.X)
             line1 = f"{(r or 'SCONOSCIUTO'):12} {m}" + ("  (assente)" if h["gone"] else "")
             line2 = (f"  {h.get('ip_src', '?'):15} fw {h.get('fw', '?')} {h.get('part', '?')}"
-                     f"  capo: {boss}" + (f"  imu: {h['imu']}" if h.get("imu") else ""))
+                     f"  capo: {boss}" + (f"  imu: {h['imu']}" if h.get("imu") else "")
+                     + (f" ({h['imu_why']})" if h.get("imu_why") else ""))
             tk.Label(row, text=line1 + "\n" + line2, bg=bg, fg=fg, font=("TkFixedFont", 9),
                      anchor="w", justify="left").pack(side=tk.LEFT, fill=tk.X, expand=True)
             if mine:
