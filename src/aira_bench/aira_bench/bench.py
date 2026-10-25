@@ -98,7 +98,8 @@ LEVEL = [("level.on", "livella 0=off 1=on", 0.0, 1.0, 1.0),
          ("level.max", "correz. max deg", 0.0, 40.0, 0.5),
          ("level.swap", "scambia assi 0/1", 0.0, 1.0, 1.0),
          ("level.sp", "verso pitch", -1.0, 1.0, 2.0),
-         ("level.sr", "verso roll", -1.0, 1.0, 2.0)]
+         ("level.sr", "verso roll", -1.0, 1.0, 2.0),
+         ("level.tau", "filtro s (fw 0.3.8)", 0.2, 5.0, 0.1)]   # lungo = ignora spinte/frenate
 # scheda funzioni (23/10): movimenti automatici calcolati QUI e mandati come target a 20 Hz, cosi'
 # la velocita' vera la limitano comunque vel_max/acc/PWM del micro (scheda PID)
 FUNCS = (("manual", "Manuale (joystick)"), ("sliders", "Slider (a mano)"), ("twirl", "Twirl"),

@@ -40,6 +40,7 @@ il profilo, lo comanda con gli stick e mostra cosa fa. Il micro non sa di essere
 | Testo sotto le barre | `mis` / `target` / `set` in gradi, `vel` (°/s), `u` = spinta dell'anello per quel giunto (duty, prima del mixing), `raw` = lettura grezza del pot. |
 | **Barre mot A / mot B** | Duty vero dato a ciascun motore (−1…+1). |
 | Testo sotto i motori | Duty, **corrente** (A) e mV grezzi dell'ACS per motore, `saturo` = 1 se il duty è stato tagliato al massimo, **heartbeat visto dal micro** (ms), `⚠ FUNGO` se premuto. |
+| **Livellamento** (scheda cal / OTA) | **livella** 0/1, **correz. max** (0-40°, quanto può correggere il busto), **scambia assi** e **versi** (montaggio della IMU), **filtro s**: lungo (2 s) = spinte e frenate della base non muovono il busto, corto = segue prima un'inclinazione vera. **azzera livello** con la base in piano (salva lo zero nel profilo). Si salvano con **SALVA nel profilo** della scheda PID. |
 | **IMU** (in fondo) | Stato (`ok` / `init` / `assente` / `perso`, col motivo dal fw 0.3.5), accelerazione (m/s²) e `|a|` (da fermo ~9,8), giroscopio (rad/s), roll/pitch/yaw stimati dalla plancia. Il disegno mostra gli **assi del sensore** (X rosso, Y verde, Z blu) rispetto alla gravità. Lo **yaw** viene solo dal giroscopio e deriva: **tocca il disegno** per azzerarlo. È una vista per controllo, non quella che userà il robot. |
 
 > La corrente dell'ACS è quella **nel motore**, non quella dell'alimentatore: col PWM l'alimentatore
