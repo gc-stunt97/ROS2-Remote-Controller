@@ -444,7 +444,7 @@ class Bench:
 
         self.link = Link(self.log)
         self.link.on_hello = lambda mac, h: self.root.after(0, self._on_hello, mac, h)
-        self.link.on_ack = lambda m: None
+        self.link.on_ack = lambda m: self.root.after(0, self._on_cfg_ack, m)
 
         if node is not None:
             # depth 1: degli stick conta solo l'ultimo valore, una coda piu' lunga = ritardo
@@ -1157,14 +1157,36 @@ class Bench:
             cfg["raw_max"] = 1.0
         if self.no_lim.get():
             cfg["raw_ignore_pot"] = 1
-        # il micro non accetta piu' di ~1 KB per datagramma: si spezza
+        # il micro non accetta piu' di ~1 KB per datagramma: si spezza. E i pezzi si mandano
+        # DISTANZIATI: la coda UDP del micro tiene 6 datagrammi, il 7o di fila si perdeva in
+        # silenzio (26/10: sign.*, wd_ms, on_stop mai arrivati, il busto girava col segno a 1,5).
+        # Poi si contano le chiavi confermate: se ne mancano si rimanda tutto (al massimo 2 volte)
         items = list(cfg.items())
-        for i in range(0, len(items), 12):
-            msg = {"t": "cfg"}
-            msg.update(dict(items[i:i + 12]))
-            self.link.send(msg)
+        chunks = [dict(items[i:i + 12]) for i in range(0, len(items), 12)]
+        self._cfg_expect, self._cfg_acked = len(items), 0
+        self._cfg_try = getattr(self, "_cfg_try", 0)
+        for n, ch in enumerate(chunks):
+            self.root.after(40 * n, self.link.send, dict({"t": "cfg"}, **ch))
+        self.root.after(40 * len(chunks) + 1000, self._cfg_check)
         self.cfg_sent = True
         self.log(f"[banco] config spinta ({len(items)} chiavi)")
+
+    def _on_cfg_ack(self, msg):
+        self._cfg_acked = getattr(self, "_cfg_acked", 0) + int(msg.get("ok") or 0) + len(msg.get("bad") or [])
+
+    def _cfg_check(self):
+        exp, got = getattr(self, "_cfg_expect", 0), getattr(self, "_cfg_acked", 0)
+        if got >= exp:
+            self._cfg_try = 0
+            return
+        if self._cfg_try < 2:
+            self._cfg_try += 1
+            self.log(f"[banco] ⚠ il micro ha confermato {got} chiavi su {exp}: rimando la config")
+            self._push_cfg()
+        else:
+            self._cfg_try = 0
+            self.log(f"[banco] ⚠⚠ config INCOMPLETA dopo 3 tentativi ({got}/{exp}): "
+                     "premi «leggi cfg» e controlla")
 
     # ------------------------------------------------------------ comandi
     def _tel(self):
