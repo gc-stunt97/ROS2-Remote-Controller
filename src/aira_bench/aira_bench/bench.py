@@ -120,6 +120,11 @@ FUNC_NOTES = {
 FUNC_APPROACH = 10.0      # deg/s del target per arrivare al punto di partenza e tornare al centro
 FUNC_SPINUP_S = 1.5       # s per portare la velocita' angolare da 0 a quella chiesta
 FUNC_AMP_RATE = 10.0      # deg/s: un cambio di swing da slider arriva cosi', non a scalino
+# deg/s: tetto della velocita' di picco del target (swing x velocita' angolare). Twirl del 25/10:
+# +-24/15 in 1,2 s = 125 deg/s, il busto non ci arriva (telemetria: 99% dei campioni sotto
+# 50 deg/s pitch e 36 roll) e cade nel gioco a ogni inversione -> fault "segno". Oltre questo il
+# periodo si allunga da solo
+FUNC_VMAX = 45.0
 TEL_LOG_MAX = 50 * 1024 * 1024                             # ~1 MB/min: circa 50 min di prove
 MICRO_GONE_S = 5.0        # s senza annunci -> la scheda in lista diventa "assente"
 
@@ -874,6 +879,15 @@ class Bench:
                 self.log(f"[funzioni] {f['kind']}: partita")
         elif f["phase"] == "in corsa":
             w_full = 2.0 * math.pi / max(0.5, float(self.func_sl["period"].get()))
+            w_cap = FUNC_VMAX / max(1e-3, f["amp"][0], f["amp"][1])
+            capped = w_full > w_cap
+            if capped:
+                w_full = w_cap
+            if capped != f.get("capped"):
+                f["capped"] = capped
+                if capped:
+                    self.log(f"[funzioni] troppo veloce per il busto: periodo allungato a "
+                             f"{2.0 * math.pi / w_cap:.1f} s (picco {FUNC_VMAX:.0f} deg/s)")
             if f["kind"] == "twirl" and self.func_ccw.get():
                 w_full = -w_full
             # avvio (e cambi di periodo) dolci: la velocita' angolare sale in FUNC_SPINUP_S

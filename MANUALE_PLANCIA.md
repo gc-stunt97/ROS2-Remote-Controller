@@ -78,6 +78,10 @@ il numero resta leggibile.
       gradi), casella **twirl antiorario** per il verso.
     - **Oscillatore pitch:** periodo, **swing pitch**, **roll fisso** = il roll resta fermo lì mentre
       il pitch oscilla. **Oscillatore roll:** uguale a parti invertite (**pitch fisso**).
+  - **Tetto di velocità (25/10):** il target non va oltre **45 °/s** di picco (swing × velocità
+    del giro). Se periodo e swing chiedono di più, il periodo **si allunga da solo** e il log lo
+    dice («periodo allungato a … s»). Oltre, il busto non ci arriva e cade nel gioco a ogni
+    inversione dei motori.
   - Mentre una funzione gira non se ne sceglie un'altra: prima **STOP**.
   - Sulle barre il **blu** (target) segue la funzione, il **giallo** (setpoint) è la rampa del micro,
     il **verde** è il busto vero. Se il verde resta indietro, a limitare sono **vel max / acc / PWM
