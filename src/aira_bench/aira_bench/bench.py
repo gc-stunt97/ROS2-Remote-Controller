@@ -1483,7 +1483,10 @@ class Bench:
             self.cfg_sent = False
         if ms is not None:
             self._tel_ms = ms
-        if self.role and self.link.target_ip and not self.cfg_sent and age < 1.0:
+        # mai da armato: per il micro una cfg da armato = disarmo (25/10 alle 02:18 e' successo).
+        # Dopo un riavvio vero il micro e' comunque disarmato
+        if (self.role and self.link.target_ip and not self.cfg_sent and age < 1.0
+                and tel.get("st") != "armato"):
             self._push_cfg()
         live = age < 0.5
         st = tel.get("st", "—") if live else "offline"
