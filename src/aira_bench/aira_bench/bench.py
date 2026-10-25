@@ -566,8 +566,10 @@ class Bench:
                                 highlightbackground=GRID)
         self.imu_cv.pack(side=tk.LEFT)
         self.imu_cv.bind("<Button-1>", self._imu_zero_yaw)
+        # wraplength: il motivo dell'errore (fw >= 0.3.12) e' lungo e allargava la colonna, schiacciando
+        # le schede a destra (banco 25/10)
         self.imu_lbl = tk.Label(r, text="IMU: nessun dato", bg=BG, fg=FG, font=("TkFixedFont", 8),
-                                anchor="nw", justify="left")
+                                anchor="nw", justify="left", wraplength=240)
         self.imu_lbl.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0))
 
         # destra: calibrazione + OTA + log
@@ -1132,7 +1134,7 @@ class Bench:
                      f"  capo: {boss}" + (f"  imu: {h['imu']}" if h.get("imu") else "")
                      + (f" ({h['imu_why']})" if h.get("imu_why") else ""))
             tk.Label(row, text=line1 + "\n" + line2, bg=bg, fg=fg, font=("TkFixedFont", 9),
-                     anchor="w", justify="left").pack(side=tk.LEFT, fill=tk.X, expand=True)
+                     anchor="w", justify="left", wraplength=470).pack(side=tk.LEFT, fill=tk.X, expand=True)
             if mine:
                 tk.Label(row, text="AGGANCIATO", bg=OK_COL, fg=INK,
                          font=("TkDefaultFont", 9, "bold")).pack(side=tk.RIGHT, padx=2)
@@ -1480,7 +1482,7 @@ class Bench:
         with self.link.lock:
             m, age, (r, p, y) = dict(self.link.imu), time.time() - self.link.imu_time, self.link.att
         h = getattr(self, "last_hello", {}) or {}
-        state = h.get("imu", "?") + (f" ({h['imu_why']})" if h.get("imu_why") else "")
+        state = h.get("imu", "?") + (f"\n{h['imu_why']}" if h.get("imu_why") else "")
         c = self.imu_cv
         c.delete("all")
         if not m or age > 0.5:
