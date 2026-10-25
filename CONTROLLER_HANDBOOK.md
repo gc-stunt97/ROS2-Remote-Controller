@@ -947,11 +947,28 @@ mouse, lo riavvia alla chiusura).
   scale larghe (kp 0,5, vel 120 °/s, PWM fino a 1,0) + **accelerazione** e **stallo** (soglia e tempo). (22/10 sera) **3 colonne**, una riga per gruppo: pitch, roll, **PWM max pitch / roll / motori** (fw ≥ 0.3.1), moto + stacco, stallo, **gioco** (`gap.duty/i_on/ms`, fw ≥ 0.3.0). (23/10) **cedevolezza** (`comply`, al posto della casella vuota della riga stallo) e **soglia carico** (`hold_u`, riga in fondo), fw ≥ 0.3.2. «valori del profilo» torna al repo, «scrivi valori nel log» stampa la riga da copiare in
   `periph/torso.yaml`. Ogni cambio finisce anche nel registro come riga `{"t":"tune"}`.
   «rimanda cfg» riporta gli slider ai valori del profilo;
-- ⚠️ **dopo un OTA o un riavvio del micro la plancia NON rimanda la cfg da sola** (il micro torna
-  NON CALIBRATO): premere **«rimanda cfg»**. Da correggere. Lo span degli stick (`bench:`) si
-  rilegge solo all'aggancio → dopo averlo cambiato si riapre la plancia;
+- ✅ (25/10) **la cfg si rimanda da sola** all'aggancio e a ogni riavvio del micro, OTA compreso:
+  se ne accorge dal `ms` della telemetria che torna indietro (il `hello` senza capo spesso non si
+  vede, l'heartbeat riaggancia prima). **Mai da armato** (per il micro = disarmo). Lo span degli
+  stick (`bench:`) si rilegge solo all'aggancio → dopo averlo cambiato si riapre la plancia;
+- ⭐ (25/10) **«SALVA nel profilo»** (scheda PID): scrive i valori della scheda (e del
+  livellamento) in `~/AIRA_Robot/periph/<ruolo>.yaml` riga per riga (i commenti restano, una
+  chiave nuova va in fondo alla sezione `cfg`) e **committa nel clone**. Il telecomando non ha
+  internet: dal portatile `git fetch ssh://giulio@192.168.10.10/home/giulio/AIRA_Robot main`,
+  unire, poi push a GitHub e di nuovo al telecomando (branch `da_portatile` + `merge --ff-only`).
+  Mai un force: sul telecomando ci sono commit che il portatile non ha;
+- (25/10) slider dentro **funzioni** (voce «Slider (a mano)»: niente AVVIA); riquadro
+  **livellamento IMU** in *cal / OTA* (on/off, correzione max 0-40°, scambia assi, versi, filtro s,
+  «azzera livello» che salva lo zero nel profilo), fw ≥ 0.3.7; **pannello IMU** sotto i motori
+  (stato col motivo, acc/gyr, assetto stimato con filtro complementare nel thread di rete, disegno
+  degli assi; toccarlo azzera lo yaw); i dati `imu` (100 Hz, anche da disarmato) nel registro;
+  scheda micro con `imu: …` e `imu_why`; cedevolezza `comply.src`/`comply.amp` (fw ≥ 0.3.4);
+- ⚠️ **due lettori sulla seriale** (25/10): plancia chiusa e riaperta nello stesso secondo → lo
+  «start» del modo mouse della vecchia passa prima che la nuova apra la porta, stick a ~1
+  messaggio/s, «busto in ritardo». `mouse-mode.sh` ora non parte se c'è un launch di plancia vivo;
+  diagnosi: `pgrep -af joypad_node` (due righe = guaio);
 - ⭐ **registro della telemetria** (20/10): da armato ogni riga `tel` (50 Hz) va in
-  `~/.aira/bench_tel.jsonl` (dal 23/10: un file per sessione in `~/.aira/bench_tel/`, ultime 20, e la scheda log in `~/.aira/bench_log/`; il vecchio nome è un link all'ultima), tetto 50 MB → si tara l'anello sui dati
+  `~/.aira/bench_tel.jsonl` (dal 23/10: un file per sessione in `~/.aira/bench_tel/`, ultime 20, e la scheda log in `~/.aira/bench_log/`; il vecchio nome è un link all'ultima), oltre 50 MB continua in `tel_<data>_2.jsonl`… (25/10; prima si fermava) → si tara l'anello sui dati
   (scp e grafico), non a occhio;
 - (23/10) scheda **funzioni**: Manuale / Twirl / oscillatori pitch-roll (altro asse fisso) /
   **autocalibrazione** (`autocal.py`: sequenza come generatore nel giro a 20 Hz, passa da sola in
