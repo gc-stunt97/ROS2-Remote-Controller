@@ -85,6 +85,15 @@ start() {
         echo "            probabilmente c'e' una plancia aperta: e' giusto cosi'."
         return 1
     fi
+    # ⚠️ Seriale libera NON basta: una plancia appena lanciata non l'ha ancora aperta (il suo
+    #    joypad_node parte un secondo dopo). Il 25/10 la plancia chiusa e riaperta subito: lo
+    #    "start" della vecchia e' passato in quel buco, due lettori sulla seriale, stick che
+    #    arrivavano una volta al secondo = busto in ritardo. Se un launch di plancia e' vivo,
+    #    il testimone e' suo.
+    if pgrep -f '[b]ench[.]launch[.]py|[a]ira[.]launch[.]py|[j]oypad[.]launch[.]py' >/dev/null 2>&1; then
+        echo "modo mouse: NON avvio, c'e' una plancia aperta"
+        return 1
+    fi
     # ⚠️ set +u attorno al source: gli script setup.bash di ROS leggono variabili
     #    non ancora definite (AMENT_TRACE_SETUP_FILES & co.), quindi con "set -u"
     #    attivo esplodono e lo script muore prima di lanciare qualsiasi cosa.
