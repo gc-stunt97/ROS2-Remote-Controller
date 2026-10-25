@@ -92,6 +92,13 @@ TUNE = [("pitch.kp", "pitch kp", 0.0, 0.50, 0.005), ("pitch.ki", "pitch ki", 0.0
         # fw >= 0.3.4: da dove si stima la spinta per la cedevolezza: 0 integrale, 1 uscita PID, 2 ACS
         ("comply.src", "fonte cedev. 0-2", 0.0, 2.0, 1.0),   # etichette corte: 3 colonne in 800 px
         ("comply.amp", "ACS A a PWM max", 1.0, 15.0, 0.1)]
+# livellamento con l'IMU della base (fw >= 0.3.7, 25/10): nella scheda cal / OTA, ma si salvano
+# col tasto SALVA della scheda PID insieme agli altri
+LEVEL = [("level.on", "livella 0=off 1=on", 0.0, 1.0, 1.0),
+         ("level.max", "correz. max deg", 0.0, 40.0, 0.5),
+         ("level.swap", "scambia assi 0/1", 0.0, 1.0, 1.0),
+         ("level.sp", "verso pitch", -1.0, 1.0, 2.0),
+         ("level.sr", "verso roll", -1.0, 1.0, 2.0)]
 # scheda funzioni (23/10): movimenti automatici calcolati QUI e mandati come target a 20 Hz, cosi'
 # la velocita' vera la limitano comunque vel_max/acc/PWM del micro (scheda PID)
 FUNCS = (("manual", "Manuale (joystick)"), ("sliders", "Slider (a mano)"), ("twirl", "Twirl"),
@@ -650,6 +657,22 @@ class Bench:
                                 justify="left")
         self.cal_lbl.pack(fill=tk.X)
         self._btn(cal, "salva calibrazione e spingi", self._save_cal).pack(anchor="w", pady=2)
+
+        lev = tk.LabelFrame(tab_cal, text="livellamento con l'IMU della base (fw >= 0.3.7)",
+                            bg=BG, fg=FG)
+        lev.pack(fill=tk.X, pady=(6, 0))
+        lg = tk.Frame(lev, bg=BG)
+        lg.pack(fill=tk.X)
+        for n, (key, label, lo, hi, step) in enumerate(LEVEL):
+            box, sc = self._slider(lg, label, lo, hi, step, 120, font=("TkFixedFont", 8), width=10)
+            box.grid(row=n // 3, column=n % 3, padx=2, pady=1, sticky="we")
+            sc.bind("<ButtonRelease-1>", functools.partial(self._tune_send, key))
+            self.tune_sl[key] = sc
+        lr = tk.Frame(lev, bg=BG)
+        lr.pack(fill=tk.X, pady=2)
+        self._btn(lr, "azzera livello (base in piano)", self._level_zero).pack(side=tk.LEFT)
+        self.level_lbl = tk.Label(lr, text="", bg=BG, fg=SP_COL, font=("TkFixedFont", 8))
+        self.level_lbl.pack(side=tk.LEFT, padx=6)
 
         ota = tk.Frame(tab_cal, bg=BG)
         ota.pack(fill=tk.X, pady=6)
@@ -1240,6 +1263,28 @@ class Bench:
         else:
             self.log(f"[PID] {git}")
 
+    def _level_zero(self):
+        """La base adesso e' in piano: la lettura attuale diventa lo zero (level.p0/r0), mandata
+        al micro e salvata nel profilo. bp/br del micro sono gia' al netto dello zero vecchio"""
+        if not self.role:
+            return
+        tel, age = self._tel()
+        if age > 0.5 or "bp" not in tel:
+            messagebox.showwarning("Livello", "Niente telemetria del livellamento (serve fw >= 0.3.7).")
+            return
+        cfg = self.prof.cfg(self.role)
+        p0 = round(float(cfg.get("level.p0", 0.0)) + float(tel["bp"]), 2)
+        r0 = round(float(cfg.get("level.r0", 0.0)) + float(tel["br"]), 2)
+        if not messagebox.askyesno("Livello", f"La base e' in piano adesso?" + NL +
+                                   f"Zero nuovo: pitch {p0:+.2f}, roll {r0:+.2f} (salvato nel profilo)"):
+            return
+        self.link.send({"t": "cfg", "level.p0": p0, "level.r0": r0})
+        try:
+            changed, git = self.prof.save_profile(self.role, {"level.p0": p0, "level.r0": r0})
+            self.log(f"[livello] zero = pitch {p0:+.2f} roll {r0:+.2f} ({git})")
+        except (OSError, ValueError, RuntimeError) as exc:
+            self.log(f"[livello] zero mandato al micro ma NON salvato: {exc}")
+
     def _toggle_no_lim(self):
         prof = self.prof.cfg(self.role).get("raw_ignore_pot", 0) if self.role else 0
         if not self.no_lim.get():              # rimettere i limiti e' sempre sicuro
@@ -1428,13 +1473,21 @@ class Bench:
             return
         a, g = m.get("a", [0, 0, 0]), m.get("g", [0, 0, 0])
         n = math.sqrt(sum(v * v for v in a))
+        tel, tage = self._tel()
+        tel_bp = tel.get("bp") if tage < 0.5 else None
+        tel_br, tel_lp, tel_lr = tel.get("br", 0), tel.get("lvp", 0), tel.get("lvr", 0)
+        if tel_bp is not None:
+            self.level_lbl.config(text=f"base: pitch {tel_bp:+.1f} roll {tel_br:+.1f}  "
+                                       f"correzione {tel_lp:+.1f} {tel_lr:+.1f}")
         self.imu_lbl.config(text=(
             f"IMU: {state}\n"
             f"acc {a[0]:+6.2f} {a[1]:+6.2f} {a[2]:+6.2f}\n"
             f"|a| {n:5.2f} m/s2\n"
             f"gyr {g[0]:+6.3f} {g[1]:+6.3f} {g[2]:+6.3f}\n"
             f"roll {math.degrees(r):+6.1f}  pitch {math.degrees(p):+6.1f}\n"
-            f"yaw {math.degrees(y):+6.1f} (deriva: tocca il disegno)"))
+            f"yaw {math.degrees(y):+6.1f} (deriva: tocca il disegno)"
+            + (f"\nbase p {tel_bp:+5.1f} r {tel_br:+5.1f}  corr {tel_lp:+5.1f} {tel_lr:+5.1f}"
+               if tel_bp is not None else "")))
         # assi del sensore ruotati (yaw-pitch-roll), visti da davanti-destra-alto
         cr, sr, cp, sp, cy, sy = math.cos(r), math.sin(r), math.cos(p), math.sin(p), math.cos(y), math.sin(y)
         R = [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
