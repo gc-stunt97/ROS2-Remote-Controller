@@ -1276,7 +1276,7 @@ class Bench:
         cfg = self.prof.cfg(self.role)
         p0 = round(float(cfg.get("level.p0", 0.0)) + float(tel["bp"]), 2)
         r0 = round(float(cfg.get("level.r0", 0.0)) + float(tel["br"]), 2)
-        if not messagebox.askyesno("Livello", f"La base e' in piano adesso?" + NL +
+        if not messagebox.askyesno("Livello", "La base e' in piano adesso?\n"
                                    f"Zero nuovo: pitch {p0:+.2f}, roll {r0:+.2f} (salvato nel profilo)"):
             return
         self.link.send({"t": "cfg", "level.p0": p0, "level.r0": r0})
